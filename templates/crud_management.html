@@ -1,0 +1,499 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drop-off Location Management CRUD</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        /* Topbar styling, consistent with dashboard.html */
+        .topbar {
+            background-color: #32a000; /* Dark green topbar */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 54px;
+            padding: 0 20px;
+        }
+        .topbar .icon-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            margin: 0 5px;
+            color: #fff;
+            padding: 0;
+            display: flex;
+            align-items: center;
+        }
+        .topbar .icon-btn svg {
+            width: 28px;
+            height: 28px;
+            fill: #fff;
+        }
+        .topbar .spacer {
+            flex-grow: 1;
+        }
+        /* Active state for the CRUD button */
+        .topbar .icon-btn.active {
+            background-color: #256b00; /* Darker green for active state */
+            border-radius: 5px;
+        }
+        /* Dropdown styling from dashboard.html */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 280px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 10; right: 0; border-radius: 8px; top: 50px; font-family: Arial, sans-serif; }
+        .dropdown-content a { color: black; padding: 12px 16px; text-decoration: none; display: block; text-align: center; border-bottom: 1px solid #ddd; }
+        .dropdown-content a:hover { background-color: #f1f1f1; border-radius: 0 0 8px 8px; }
+        .dropdown-content .dropdown-item { display: flex; padding: 12px 16px; border-bottom: 1px solid #ddd; align-items: center; }
+        .dropdown-content .dropdown-item:last-child { border-bottom: none; }
+        .dropdown-content .icon { margin-right: 15px; color: #32a000; }
+        .dropdown-content .message h5 { margin: 0; font-size: 1em; color: #333; }
+        .dropdown-content .message p { margin: 0; font-size: 0.9em; color: #666; }
+        .dropdown-content .message .time { display: block; font-size: 0.8em; color: #999; margin-top: 4px; }
+        .dropdown-content.show { display: block; }
+
+        /* CRUD Specific Styles */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fa; 
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #map {
+            height: 400px; 
+            width: 100%;
+        }
+    </style>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+</head>
+<body>
+{% include 'partials/topbar.html' with active_tab='crud_management' %}
+{% comment %}<div class="topbar">
+        <style>.topbar-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid #fff;display:inline-block}</style>
+        <button class="icon-btn" onclick="location.href='{% url 'profile' %}'" title="Profile">
+            {% if has_custom_avatar and user_profile %}
+                <img class="topbar-avatar" src="{{ user_profile.photo.url }}" alt="Profile Avatar" />
+            {% else %}
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.5-1.8 4.5-4.5S14.7 3 12 3 7.5 4.8 7.5 7.5 9.3 12 12 12zm0 2c-3 0-9 1.5-9 4.5V21h18v-2.5c0-3-6-4.5-9-4.5z"/></svg>
+            {% endif %}
+        </button>
+
+        <div class="spacer"></div>
+        <button class="icon-btn" onclick="location.href='{% url 'dashboard' %}'" title="Home">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L2 12h3v8h6v-6h2v6h6v-8h3L12 2zm0 14h-2v-4h2v4zm4-4h-2v4h2v-4zm-8 4H6v-4h2v4z"/>
+            </svg>
+        </button>
+        <div class="dropdown">
+            <button class="icon-btn" onclick="toggleDropdown()" title="Notifications">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C10.34 2 9 3.34 9 5V5.29C6.61 6.16 5 8.42 5 11V17L3 19V20H21V19L19 17V11C19 8.42 17.39 6.16 15 5.29V5C15 3.34 13.66 2 12 2ZM12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22Z"/>
+                </svg>
+            </button>
+            <div id="notificationDropdown" class="dropdown-content">
+                <div class="dropdown-item">
+                    <div class="icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm10 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+                    </div>
+                    <div class="message">
+                        <h5>Collection Scheduled</h5>
+                        <p>A collection for Valdez is scheduled for today at 2 PM.</p>
+                        <span class="time">2 hours ago</span>
+                    </div>
+                </div>
+                <a href="{% url 'crud_management' %}">CRUD Management</a>
+                <a href="{% url 'notification' %}">View all notifications</a>
+            </div>
+        </div>
+
+        <button class="icon-btn" onclick="location.href='{% url 'garbage_level' %}'" title="Warning">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'track_trucks' %}'" title="Track Trucks">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'help' %}'" title="Help">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0C5.37258 0 0 5.3726 0 12C0 18.6274 5.37258 24 12 24C18.6274 24 24 18.6274 24 12C24 5.3726 18.6274 0 12 0ZM13 18H11V16H13V18ZM14.071 11.071L13.171 11.971C12.6265 12.5155 12.25 13.0796 12.25 14H11V13.5C11 12.7035 11.3765 11.9225 11.929 11.37L13.243 10.057C13.4056 9.89443 13.5 9.67652 13.5 9.5C13.5 9.22386 13.2761 9 13 9H11C10.7239 9 10.5 9.22386 10.5 9.5V10H9V9.5C9 8.39543 9.89543 7.5 11 7.5H13C14.1046 7.5 15 8.39543 15 9.5C15 10.0148 14.8042 10.5074 14.464 10.879L14.071 11.071Z"/>
+            </svg>
+        </button>
+        
+        <button class="icon-btn active" onclick="location.href='{% url 'crud_management' %}'" title="CRUD Management">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zm0-8h14V7H7v2z"/>
+            </svg>
+        </button>
+        <button class="icon-btn" onclick="location.href='{% url 'resident_verification' %}'" title="Resident Verification">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M22 10V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h4l-3.96 4.95a.5.5 0 0 0 .39.86H21.5a.5.5 0 0 0 .39-.86L18 12h4c1.1 0 2-.9 2-2zM4 6h16v4h-4.66a.5.5 0 0 0-.39.86L18 14.14V16h-4.34a.5.5 0 0 0-.39-.86L15.99 12.5H4V6zm16 8h-4.34a.5.5 0 0 0-.39.86L15.99 16.5H20v-2.5zm-8 4H4v2h8v-2z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'logout' %}'" title="Logout">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+            </svg>
+        </button>
+    </div>{% endcomment %}
+    
+    <div class="flex-grow flex justify-center items-start p-8">
+        <div class="flex flex-col md:flex-row gap-8 w-full max-w-5xl">
+            
+            <div class="flex-1 bg-white rounded-xl shadow-md p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 id="map-title" class="text-2xl font-bold text-[#32a000]">Drop-off Locations Map</h2>
+                    <button id="add-location-btn" class="bg-[#5dbb29] hover:bg-[#4a9e22] text-white font-bold py-2 px-4 rounded transition-colors duration-200">
+                        + Add New Location
+                    </button>
+                </div>
+                <div id="map" class="w-full bg-gray-100 rounded-lg"></div>
+                <p class="text-sm text-gray-600 mt-2">Click "Add New Location" and then click on the map to place a new drop-off point.</p>
+            </div>
+
+            <div class="flex-1 bg-white rounded-xl shadow-md p-6">
+                <h2 id="list-title" class="text-2xl font-bold text-[#32a000] mb-4">Drop-off Locations List</h2>
+                <ul id="dropofflocation-legend-list" class="space-y-4 max-h-96 overflow-y-auto">
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="location-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <h3 id="modal-title" class="text-xl font-bold mb-4 text-[#32a000]">Add New Drop-off Location</h3>
+            <form id="location-form">
+                <input type="hidden" id="doc-id">
+                <input type="hidden" id="collection-type"> 
+                <div class="mb-4">
+                    <label for="location" class="block text-gray-700 text-sm font-bold mb-2">Location Name/Address</label>
+                    <input type="text" id="location" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                
+                <input type="hidden" id="latitude">
+                <input type="hidden" id="longitude">
+
+                <div class="flex items-center justify-between">
+                    <button type="submit" id="save-btn" class="bg-[#5dbb29] hover:bg-[#4a9e22] text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-200">
+                        Save Location
+                    </button>
+                    <button type="button" onclick="closeModal()" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-200">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        // Dropdown toggle function for the top bar
+        function toggleDropdown() {
+            document.getElementById("notificationDropdown").classList.toggle("show");
+        }
+        window.onclick = function(event) {
+            if (!event.target.matches('.icon-btn') && !event.target.closest('.dropdown')) {
+                var dropdowns = document.getElementsByClassName("dropdown-content");
+                for (var i = 0; i < dropdowns.length; i++) {
+                    var openDropdown = dropdowns[i];
+                    if (openDropdown.classList.contains('show')) {
+                        openDropdown.classList.remove('show');
+                    }
+                }
+            }
+        }
+
+        // --- Firebase Setup ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAmLanEMQoY6NSEcacziav2xYyr4y8UOHU",
+            authDomain: "g-trackapp.firebaseapp.com",
+            databaseURL: "https://g-trackapp-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "g-trackapp",
+            storageBucket: "g-trackapp.firebasestorage.app",
+            messagingSenderId: "172056621672",
+            appId: "1:172056621672:web:9481cda9b93cac6d7d01dd",
+            measurementId: "G-5HRRQCP4P1"
+        };
+
+        const app = firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        
+        // Define the single collection
+        const COLLECTION_NAME = "dropofflocation";
+        
+        let map; 
+        let geocoder; 
+        let markers = []; 
+        let newMarker = null; 
+        let infoWindow; 
+
+        const defaultCenter = { lat: 14.662, lng: 120.949 }; 
+
+        // Function to determine marker icon for Drop-off Locations
+        function getMarkerIcon() {
+            const color = '#3498db'; // Blue
+            const label = 'D'; 
+            const svg = `
+                <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="5" y="5" width="20" height="20" rx="5" fill="${color}" stroke="white" stroke-width="2"/>
+                    <text x="15" y="21" font-family="Arial, sans-serif" font-size="14" fill="white" text-anchor="middle" font-weight="bold">${label}</text>
+                </svg>`;
+
+            return {
+                color: color,
+                label: label,
+                svg: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            };
+        }
+
+        // --- Map Initialization (Called by Google Maps API) ---
+        function initMap() {
+            if (typeof google === 'undefined' || !google.maps) {
+                console.error("Google Maps API is not fully loaded when initMap was called.");
+                return;
+            }
+
+            infoWindow = new google.maps.InfoWindow(); 
+
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: defaultCenter,
+                zoom: 15,
+                mapId: "DEMO_MAP_ID" 
+            });
+            geocoder = new google.maps.Geocoder();
+            
+            // Set up real-time listener for Drop-off Locations
+            db.collection(COLLECTION_NAME).onSnapshot((snapshot) => {
+                const dropOffData = snapshot.docs.map(doc => ({ id: doc.id, collection: COLLECTION_NAME, ...doc.data() }));
+                updateDashboard(dropOffData);
+            }, (error) => {
+                console.error("Error listening to Firestore (Drop-off Location): ", error);
+            });
+            
+            document.getElementById('add-location-btn').addEventListener('click', () => {
+                removeNewLocationListener(); // Clear previous listeners
+                map.addListener("click", handleMapClickForNewLocation);
+                document.getElementById('add-location-btn').textContent = "Click on Map to Place Marker...";
+                document.getElementById('add-location-btn').disabled = true;
+            });
+        }
+        window.initMap = initMap; 
+
+        function removeNewLocationListener() {
+            google.maps.event.clearListeners(map, 'click');
+            if (newMarker) {
+                newMarker.setMap(null);
+                newMarker = null;
+            }
+        }
+
+        function handleMapClickForNewLocation(mapsMouseEvent) {
+            const latLng = mapsMouseEvent.latLng;
+            
+            if (newMarker) {
+                newMarker.setMap(null);
+            }
+
+            const markerIcon = getMarkerIcon();
+            newMarker = new google.maps.Marker({
+                position: latLng,
+                map: map,
+                title: "New Drop-off Location",
+                icon: {
+                    url: markerIcon.svg,
+                    scaledSize: new google.maps.Size(30, 30), 
+                    anchor: new google.maps.Point(15, 15), 
+                },
+            });
+
+            document.getElementById('doc-id').value = ''; 
+            document.getElementById('collection-type').value = COLLECTION_NAME; 
+            document.getElementById('latitude').value = latLng.lat();
+            document.getElementById('longitude').value = latLng.lng();
+            document.getElementById('location').value = '';
+
+            document.getElementById('modal-title').textContent = 'Add New Drop-off Location';
+            document.getElementById('save-btn').textContent = 'Create Location';
+            
+            openModal();
+
+            removeNewLocationListener();
+            document.getElementById('add-location-btn').textContent = "+ Add New Location";
+            document.getElementById('add-location-btn').disabled = false;
+        }
+
+        document.getElementById('location-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const docId = document.getElementById('doc-id').value;
+            // collectionName is always COLLECTION_NAME
+            const location = document.getElementById('location').value;
+            const latitude = parseFloat(document.getElementById('latitude').value);
+            const longitude = parseFloat(document.getElementById('longitude').value);
+
+            let data = {
+                location: location,
+                latitude: latitude,
+                longitude: longitude,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            try {
+                if (docId) {
+                    await db.collection(COLLECTION_NAME).doc(docId).update(data);
+                    console.log(`Document successfully updated in ${COLLECTION_NAME}!`);
+                } else {
+                    await db.collection(COLLECTION_NAME).add(data);
+                    console.log(`Document successfully created in ${COLLECTION_NAME}!`);
+                }
+                closeModal();
+            } catch (error) {
+                console.error("Error saving document: ", error);
+                alert(`Error saving location: ${error.message}`);
+            }
+        });
+
+        // Reusable Delete Function
+        window.deleteLocation = async (docId) => {
+            if (confirm("Are you sure you want to delete this Drop-off Location?")) {
+                try {
+                    await db.collection(COLLECTION_NAME).doc(docId).delete();
+                    infoWindow.close(); 
+                    alert("Location successfully deleted!");
+                } catch (error) {
+                    console.error("Error removing document: ", error);
+                    alert(`Error deleting location: ${error.message}`);
+                }
+            }
+        };
+
+        // Reusable Edit Function
+        window.editLocation = (item) => {
+            document.getElementById('doc-id').value = item.id;
+            document.getElementById('collection-type').value = COLLECTION_NAME;
+            document.getElementById('location').value = item.location || '';
+            document.getElementById('latitude').value = item.latitude;
+            document.getElementById('longitude').value = item.longitude;
+
+            document.getElementById('modal-title').textContent = 'Edit Drop-off Location';
+            document.getElementById('save-btn').textContent = 'Update Location';
+
+            openModal();
+            infoWindow.close(); 
+        };
+
+        // Function to render data for the single collection
+        function updateDashboard(data) {
+            const legendList = document.getElementById('dropofflocation-legend-list');
+            legendList.innerHTML = '';
+            
+            // Clear and reset markers
+            markers.forEach(marker => marker.setMap(null));
+            markers = []; 
+            if (infoWindow) infoWindow.close(); 
+            
+            const markerIcon = getMarkerIcon();
+            
+            data.forEach(item => {
+                
+                // Update List/Legend
+                const li = document.createElement('li');
+                li.className = 'flex items-center cursor-pointer hover:bg-gray-50 p-2 rounded'; 
+                li.innerHTML = `
+                    <span class="w-6 h-6 rounded-md" style="background-color: ${markerIcon.color};"></span>
+                    <span class="ml-3 text-gray-800 text-base font-semibold">${item.location || 'N/A'}</span>
+                    <span class="ml-auto text-sm text-gray-500">(Drop-off)</span>
+                `;
+                legendList.appendChild(li);
+
+                if (item.latitude && item.longitude && map) {
+                    const position = { lat: item.latitude, lng: item.longitude };
+                    
+                    const marker = new google.maps.Marker({
+                        position: position,
+                        map: map,
+                        title: `${item.location} - Drop-off Location`,
+                        icon: {
+                            url: markerIcon.svg,
+                            scaledSize: new google.maps.Size(30, 30), 
+                            anchor: new google.maps.Point(15, 15), 
+                        },
+                    });
+                    
+                    // Add Marker Click Listener
+                    marker.addListener("click", () => {
+                        infoWindow.setContent(`
+                            <div style="font-family: Arial; min-width: 200px;">
+                                <b class="text-lg">${item.location || 'N/A'}</b><br>
+                                Type: <span style="font-weight: bold; color: ${markerIcon.color};">Drop-off Location</span><br>
+                                <hr class="my-2">
+                                <div class="flex space-x-2">
+                                    <button onclick="editLocation(${JSON.stringify(item).replace(/"/g, '&quot;')})" 
+                                        class="bg-yellow-500 hover:bg-yellow-600 text-white text-sm py-1 px-3 rounded">
+                                        Edit
+                                    </button>
+                                    <button onclick="deleteLocation('${item.id}')" 
+                                        class="bg-red-500 hover:bg-red-600 text-white text-sm py-1 px-3 rounded">
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
+                        `);
+                        infoWindow.open(map, marker);
+                    });
+                    
+                    markers.push(marker);
+
+                    // Add List Click Listener (pan to marker)
+                    li.addEventListener('click', () => {
+                        map.panTo(position);
+                        map.setZoom(17);
+                        google.maps.event.trigger(marker, 'click');
+                    });
+                } else {
+                    if (!map) console.warn("Map not initialized. Cannot plot marker for:", item.location);
+                    else console.warn(`Item with ID ${item.id} is missing coordinates or location.`);
+                }
+            });
+
+            // Fit map bounds to all markers
+            if (markers.length > 0) {
+                const bounds = new google.maps.LatLngBounds();
+                markers.forEach(marker => bounds.extend(marker.getPosition()));
+                map.fitBounds(bounds);
+            } else if (map) {
+                map.setCenter(defaultCenter);
+                map.setZoom(15);
+            }
+        }
+
+
+        function openModal() {
+            document.getElementById('location-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('location-modal').classList.add('hidden');
+            if (newMarker) {
+                newMarker.setMap(null);
+                newMarker = null;
+            }
+        }
+    </script>
+
+    <script async defer loading="async"
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAmLanEMQoY6NSEcacziav2xYyr4y8UOHU&callback=initMap&libraries=geometry">
+    </script>
+</body>
+</html>

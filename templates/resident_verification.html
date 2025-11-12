@@ -1,0 +1,793 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resident Verification</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <style>
+        /* General styling, consistent with dashboard.html */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fa; 
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Topbar styling (omitted for brevity, assume it's the same) */
+        .topbar { /* ... styles from your original code ... */
+            background-color: #32a000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 54px;
+            padding: 0 20px;
+        }
+        .topbar .icon-btn { /* ... styles ... */
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            margin: 0 5px;
+            color: #fff;
+            padding: 0;
+            display: flex;
+            align-items: center;
+        }
+        .topbar .icon-btn svg { /* ... styles ... */
+            width: 28px;
+            height: 28px;
+            fill: #fff;
+        }
+        .topbar .spacer { /* ... styles ... */
+            flex-grow: 1;
+        }
+        .topbar .icon-btn.active { /* ... styles ... */
+            background-color: #256b00;
+            border-radius: 5px;
+        }
+        
+        /* Dropdown styling (omitted for brevity, assume it's the same) */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 280px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 1; right: 0; border-radius: 8px; top: 50px; font-family: Arial, sans-serif; }
+        .dropdown-content a { color: black; padding: 12px 16px; text-decoration: none; display: block; text-align: center; border-bottom: 1px solid #ddd; }
+        .dropdown-content a:hover { background-color: #f1f1f1; border-radius: 0 0 8px 8px; }
+        .dropdown-content .dropdown-item { display: flex; padding: 12px 16px; border-bottom: 1px solid #ddd; align-items: center; }
+        .dropdown-content .dropdown-item:last-child { border-bottom: none; }
+        .dropdown-content .icon { margin-right: 15px; color: #32a000; }
+        .dropdown-content .message h5 { margin: 0; font-size: 1em; color: #333; }
+        .dropdown-content .message p { margin: 0; font-size: 0.9em; color: #666; }
+        .dropdown-content .message .time { display: block; font-size: 0.8em; color: #999; margin-top: 4px; }
+        .dropdown-content.show { display: block; }
+
+        /* Main content and verification container */
+        .main-content {
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: calc(100vh - 54px);
+        }
+        .verification-container {
+            display: flex;
+            width: 100%;
+            max-width: 900px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+
+        /* Tabs for Status filtering */
+        .status-tabs {
+            display: flex;
+            justify-content: space-around;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 10px;
+            padding: 0 20px;
+        }
+
+        .status-tab {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #888;
+            border-bottom: 2px solid transparent;
+            transition: color 0.2s, border-bottom-color 0.2s;
+        }
+
+        .status-tab.active-tab {
+            color: #32a000;
+            border-bottom-color: #32a000;
+        }
+
+        /* List and Panel styling */
+        .pending-list {
+            flex-basis: 35%;
+            border-right: 1px solid #e0e0e0;
+            padding: 20px 0 0 0; /* Adjusted padding to accommodate tabs */
+            background-color: #fafafa;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            max-height: 700px; 
+        }
+
+        .list-header {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #333;
+            padding: 0 20px 10px;
+            margin-bottom: 10px;
+            display: none; /* Hide old header, replaced by tabs */
+        }
+
+        .pending-item {
+            padding: 15px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid #e0e0e0;
+            transition: background-color 0.2s;
+        }
+
+        .pending-item:hover {
+            background-color: #f1f1f1;
+        }
+
+        .pending-item.active {
+            background-color: #e6f3e6;
+            border-left: 4px solid #32a000;
+            padding-left: 16px;
+        }
+
+        .pending-item h4 {
+            margin: 0;
+            font-size: 1em;
+            color: #444;
+        }
+
+        .pending-item p {
+            margin: 0;
+            font-size: 0.8em;
+            color: #888;
+        }
+
+        .details-panel {
+            flex-basis: 65%;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #32a000;
+            margin-bottom: 20px;
+        }
+        
+        .detail-item {
+            margin-bottom: 20px;
+        }
+
+        .detail-item strong {
+            display: block;
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .detail-item p,
+        .detail-item .input-box {
+            font-size: 1em;
+            color: #333;
+            margin: 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+
+        .detail-item .input-box {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Styling for the ID picture container */
+        .id-picture-container {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .id-picture-container img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            max-height: 250px; 
+            object-fit: contain;
+        }
+
+        .id-picture-container p {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .btn-group {
+            margin-top: auto;
+            display: flex;
+            gap: 15px;
+            position: relative; 
+        }
+
+        .btn {
+            flex-grow: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            color: #ffffff;
+            transition: background-color 0.2s;
+        }
+
+        /* Buttons are only visible in the Pending tab */
+        .btn-group.hidden {
+            display: none;
+        }
+
+        .btn-verify {
+            background-color: #5dbb29;
+        }
+
+        .btn-verify:hover {
+            background-color: #4a9e22;
+        }
+
+        .btn-reject-container {
+            position: relative;
+            flex-grow: 1;
+        }
+
+        .btn-reject {
+            width: 100%;
+            background-color: #d9534f;
+        }
+
+        .btn-reject:hover {
+            background-color: #c9302c;
+        }
+        
+        /* Styling for the rejection reason dropdown */
+        .rejection-dropdown {
+            position: absolute;
+            bottom: 110%; 
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+            display: none; 
+            padding: 10px;
+            margin-bottom: 10px; 
+            min-width: 250px;
+        }
+
+        .rejection-dropdown select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .rejection-dropdown button {
+            width: 100%;
+            margin-top: 10px;
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            background-color: #d9534f;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        /* New rejection reason display in the details panel for rejected residents */
+        #detailRejectionReason {
+            color: #c9302c;
+            font-weight: bold;
+            border-left: 5px solid #d9534f;
+            padding: 10px;
+            background-color: #fdd;
+            margin-top: 10px;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .verification-container {
+                flex-direction: column;
+            }
+            .pending-list, .details-panel {
+                flex-basis: 100%;
+                border-right: none;
+            }
+            .pending-list {
+                border-bottom: 1px solid #e0e0e0;
+            }
+            .rejection-dropdown {
+                left: 0;
+                transform: none;
+                width: 100%;
+                bottom: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+{% include 'partials/topbar.html' with active_tab='resident_verification' %}
+    {% comment %}<div class="topbar">
+        <style>.topbar-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid #fff;display:inline-block}</style>
+        <button class="icon-btn" onclick="location.href='{% url 'profile' %}'" title="Profile">
+            {% if has_custom_avatar and user_profile %}
+                <img class="topbar-avatar" src="{{ user_profile.photo.url }}" alt="Profile Avatar" />
+            {% else %}
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.5-1.8 4.5-4.5S14.7 3 12 3 7.5 4.8 7.5 7.5 9.3 12 12 12zm0 2c-3 0-9 1.5-9 4.5V21h18v-2.5c0-3-6-4.5-9-4.5z"/></svg>
+            {% endif %}
+        </button>
+
+        <div class="spacer"></div>
+        <button class="icon-btn" onclick="location.href='{% url 'dashboard' %}'" title="Home">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L2 12h3v8h6v-6h2v6h6v-8h3L12 2zm0 14h-2v-4h2v4zm4-4h-2v4h2v-4zm-8 4H6v-4h2v4z"/>
+            </svg>
+        </button>
+        <div class="dropdown">
+            <button class="icon-btn" onclick="toggleDropdown('notificationDropdown')" title="Notifications">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C10.34 2 9 3.34 9 5V5.29C6.61 6.16 5 8.42 5 11V17L3 19V20H21V19L19 17V11C19 8.42 17.39 6.16 15 5.29V5C15 3.34 13.66 2 12 2ZM12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22Z"/>
+                </svg>
+            </button>
+            <div id="notificationDropdown" class="dropdown-content">
+                <div class="dropdown-item">
+                    <div class="icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm10 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+                    </div>
+                    <div class="message">
+                        <h5>Collection Scheduled</h5>
+                        <p>A collection for Valdez is scheduled for today at 2 PM.</p>
+                        <span class="time">2 hours ago</span>
+                    </div>
+                </div>
+                <a href="{% url 'crud_management' %}">CRUD Management</a>
+                <a href="{% url 'notification' %}">View all notifications</a>
+            </div>
+        </div>
+        <button class="icon-btn" onclick="location.href='{% url 'garbage_level' %}'" title="Warning">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'track_trucks' %}'" title="Track Trucks">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm10 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'help' %}'" title="Help">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0C5.37258 0 0 5.3726 0 12C0 18.6274 5.37258 24 12 24C18.6274 24 24 18.6274 24 12C24 5.3726 18.6274 0 12 0ZM13 18H11V16H13V18ZM14.071 11.071L13.171 11.971C12.6265 12.5155 12.25 13.0796 12.25 14H11V13.5C11 12.7035 11.3765 11.9225 11.929 11.37L13.243 10.057C13.4056 9.89443 13.5 9.67652 13.5 9.5C13.5 9.22386 13.2761 9 13 9H11C10.7239 9 10.5 9.22386 10.5 9.5V10H9V9.5C9 8.39543 9.89543 7.5 11 7.5H13C14.1046 7.5 15 8.39543 15 9.5C15 10.0148 14.8042 10.5074 14.464 10.879L14.071 11.071Z"/>
+            </svg>
+        </button>
+        
+        <button class="icon-btn" onclick="location.href='{% url 'resident_verification' %}'" title="Resident Verification">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M22 10V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h4l-3.96 4.95a.5.5 0 0 0 .39.86H21.5a.5.5 0 0 0 .39-.86L18 12h4c1.1 0 2-.9 2-2zM4 6h16v4h-4.66a.5.5 0 0 0-.39.86L18 14.14V16h-4.34a.5.5 0 0 0-.39-.86L15.99 12.5H4V6zm16 8h-4.34a.5.5 0 0 0-.39.86L15.99 16.5H20v-2.5zm-8 4H4v2h8v-2z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'logout' %}'" title="Logout">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+            </svg>
+        </button>
+    </div>{% endcomment %}
+    </div>
+
+    <div class="main-content">
+        <div class="verification-container">
+            
+            <div class="pending-list" id="pendingListContainer">
+                <div class="status-tabs">
+                    <div class="status-tab active-tab" data-status="Pending" onclick="changeStatusTab('Pending', this)">Pending</div>
+                    <div class="status-tab" data-status="Verified" onclick="changeStatusTab('Verified', this)">Verified</div>
+                    <div class="status-tab" data-status="Rejected" onclick="changeStatusTab('Rejected', this)">Rejected</div>
+                </div>
+                
+                <div id="pendingListContent">
+                    <p id="loading-message" style="padding: 15px 20px;">Loading residents...</p>
+                </div>
+            </div>
+
+            <div class="details-panel">
+                <div class="panel-header">Resident Verification</div>
+                
+                <div id="no-resident-selected" style="text-align: center; padding: 50px;">
+                    <p>Select a resident from the list to view details.</p>
+                </div>
+
+                <div id="resident-details-content" style="display:none;">
+                    <div class="detail-item">
+                        <strong>Status:</strong>
+                        <p id="detailStatus"></p>
+                    </div>
+                    <div class="detail-item" id="rejectionReasonWrapper" style="display: none;">
+                        <strong>Rejection Reason:</strong>
+                        <p id="detailRejectionReason"></p>
+                    </div>
+                    <div class="detail-item">
+                        <strong>First Name:</strong>
+                        <p id="detailFirstName"></p>
+                    </div>
+                    <div class="detail-item">
+                        <strong>Last Name:</strong>
+                        <p id="detailLastName"></p>
+                    </div>
+                    <div class="detail-item">
+                        <strong>Contact Number:</strong>
+                        <p id="detailPhone"></p>
+                    </div>
+                    <div class="detail-item">
+                        <strong>Email:</strong>
+                        <p id="detailEmail"></p>
+                    </div>
+                    
+                    <div class="detail-item">
+                        <strong>Street Address:</strong>
+                        <p id="detailStreet"></p>
+                    </div>
+                    <div class="detail-item">
+                        <strong>Barangay:</strong>
+                        <p id="detailBarangay"></p>
+                    </div>
+                    <div class="detail-item">
+                        <strong>City/Town:</strong>
+                        <p id="detailCity"></p>
+                    </div>
+                    <div class="detail-item">
+                        <strong>Region:</strong>
+                        <p id="detailRegion"></p>
+                    </div>
+                    
+                    <div class="detail-item">
+                        <strong>Submitted via:</strong>
+                        <p class="input-box">Mobile App</p>
+                    </div>
+
+                    <div class="id-picture-container">
+                        <strong>ID Picture:</strong>
+                        <img id="detailIDPicture" src="" alt="ID Picture of Resident">
+                        <p>Click the image to view a larger version (if implemented).</p>
+                    </div>
+
+                    <div class="btn-group" id="verificationButtons">
+                        <button class="btn btn-verify" onclick="verifyResident()">Verify Resident</button>
+                        <div class="btn-reject-container">
+                            <button class="btn btn-reject" onclick="toggleRejectionDropdown(event)">Reject Resident</button>
+                            <div id="rejectionDropdown" class="rejection-dropdown">
+                                <select id="rejectionReason">
+                                    <option value="" disabled selected>Select a reason...</option>
+                                    <option value="Insufficient Address">Insufficient Address</option>
+                                    <option value="Fake Address">Fake Address</option>
+                                    <option value="Not Residing in Catmon, Malabon">Not Residing in Catmon, Malabon</option>
+                                    <option value="Invalid ID">Invalid ID</option>
+                                </select>
+                                <button onclick="submitRejection()">Submit Rejection</button>
+                            </div>
+                        </div>
+                    </div>
+                </div> </div>
+        </div>
+    </div>
+    
+    <script>
+        // ===============================================
+        // FIREBASE SETUP & GLOBAL VARIABLES
+        // ===============================================
+        let db;
+        let currentResidentId = null;
+        let allResidentsCache = {}; // Cache to store ALL fetched resident data for the current status
+        let currentStatus = 'Pending'; // Global variable to track the active status tab
+
+        /**
+         * 2. Initialize Firebase and Firestore using your project keys.
+         */
+        function setupFirebase() {
+            // Configuration using values from your Project Settings screenshot
+            const firebaseConfig = {
+                // WARNING: Never share your full API key publicly.
+                apiKey: "AIzaSyCwvnrLJRIS03UKI...", 
+                authDomain: "g-trackapp.firebaseapp.com", 
+                projectId: "g-trackapp", 
+                storageBucket: "g-trackapp.appspot.com",
+                messagingSenderId: "172056621672",
+                appId: "YOUR_APP_ID" 
+            };
+
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            console.log("Firebase initialized for g-trackapp.");
+        }
+
+
+        // ===============================================
+        // REAL-TIME DATA FETCHING (READ)
+        // ===============================================
+        
+        /**
+         * Switches the active tab and re-runs the listener for the new status.
+         */
+        function changeStatusTab(newStatus, element) {
+            if (currentStatus === newStatus) return; 
+
+            currentStatus = newStatus;
+            
+            // Update UI tab appearance
+            document.querySelectorAll('.status-tab').forEach(tab => {
+                tab.classList.remove('active-tab');
+            });
+            element.classList.add('active-tab');
+
+            // Clear details panel and reset data cache
+            document.getElementById('resident-details-content').style.display = 'none';
+            document.getElementById('no-resident-selected').style.display = 'block';
+            currentResidentId = null;
+            allResidentsCache = {};
+
+            // Stop the previous listener and start a new one
+            // NOTE: For a production app, you would save the unsubscribe function from the previous listener
+            // and call it here to properly tear down the old listener. For this simple example, we rely
+            // on the new query implicitly replacing the list content.
+            setupRealtimeListener();
+        }
+
+
+        /**
+         * 3. Sets up the real-time listener for the currently selected status (Pending, Verified, or Rejected).
+         */
+        function setupRealtimeListener() {
+            const listContentElement = document.getElementById('pendingListContent');
+            const noSelectionElement = document.getElementById('no-resident-selected');
+            const detailsContentElement = document.getElementById('resident-details-content');
+            
+            listContentElement.innerHTML = `<p id="loading-message" style="padding: 15px 20px;">Loading ${currentStatus.toLowerCase()} residents...</p>`;
+            
+            // Query for documents where verificationStatus matches the current tab
+            db.collection("residents")
+              .where("verificationStatus", "==", currentStatus)
+              .onSnapshot((snapshot) => {
+                
+                // Clear the current list displayed on the website
+                listContentElement.innerHTML = '';
+                allResidentsCache = {}; // Clear the data cache
+                
+                if (snapshot.empty) {
+                    listContentElement.innerHTML = `<p style="padding: 15px 20px;">No residents currently ${currentStatus.toLowerCase()}.</p>`;
+                    noSelectionElement.style.display = 'block';
+                    detailsContentElement.style.display = 'none';
+                    currentResidentId = null;
+                    return;
+                }
+
+                let firstResidentId = null;
+                snapshot.forEach((doc) => {
+                    const residentData = doc.data();
+                    const residentId = doc.id; 
+                    
+                    allResidentsCache[residentId] = residentData; // Cache the data
+
+                    if (firstResidentId === null) {
+                        firstResidentId = residentId; 
+                    }
+
+                    // Build the HTML list item
+                    const listItem = document.createElement('div');
+                    listItem.className = 'pending-item';
+                    listItem.setAttribute('data-id', residentId);
+                    listItem.setAttribute('onclick', `loadResidentDetails('${residentId}', this)`);
+                    listItem.innerHTML = `
+                        <h4>${residentData.firstName} ${residentData.lastName}</h4>
+                        <p>${residentData.fullAddress || residentData.street + ', ' + residentData.barangay}...</p>
+                    `;
+                    
+                    listContentElement.appendChild(listItem);
+                });
+
+                // 4. Automatically load the first resident's details
+                if (firstResidentId) {
+                    const firstItem = document.querySelector(`#pendingListContent .pending-item[data-id="${firstResidentId}"]`);
+                    if (firstItem) {
+                        loadResidentDetails(firstResidentId, firstItem);
+                    }
+                }
+            }, (error) => {
+                console.error("Firestore real-time listener failed:", error);
+                listContentElement.innerHTML = '<p style="padding: 15px 20px; color: red;">Error loading data. Check console and security rules.</p>';
+            });
+        }
+
+        // ===============================================
+        // DETAILS PANEL & UI HANDLERS
+        // ===============================================
+
+        /**
+         * Loads the details for a selected resident from the cache.
+         */
+        function loadResidentDetails(residentId, element) {
+            // Update the active state in the list
+            document.querySelectorAll('#pendingListContent .pending-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            element.classList.add('active');
+            currentResidentId = residentId; 
+
+            const data = allResidentsCache[residentId];
+
+            if (!data) return; 
+
+            // Show the details panel
+            document.getElementById('no-resident-selected').style.display = 'none';
+            document.getElementById('resident-details-content').style.display = 'block';
+
+            // Check the current status to show/hide the buttons and rejection reason
+            const rejectionWrapper = document.getElementById('rejectionReasonWrapper');
+            const verificationButtons = document.getElementById('verificationButtons');
+            
+            if (data.verificationStatus === 'Pending') {
+                verificationButtons.classList.remove('hidden');
+                rejectionWrapper.style.display = 'none';
+            } else {
+                verificationButtons.classList.add('hidden');
+                // Show rejection reason only if rejected
+                if (data.verificationStatus === 'Rejected') {
+                    rejectionWrapper.style.display = 'block';
+                    document.getElementById('detailRejectionReason').innerText = data.rejectionReason || 'No reason provided.';
+                } else {
+                    rejectionWrapper.style.display = 'none';
+                }
+            }
+            
+            // Update the details panel fields
+            document.getElementById('detailStatus').innerText = data.verificationStatus || 'N/A';
+            document.getElementById('detailFirstName').innerText = data.firstName || 'N/A';
+            document.getElementById('detailLastName').innerText = data.lastName || 'N/A';
+            document.getElementById('detailPhone').innerText = data.phone || 'N/A';
+            document.getElementById('detailEmail').innerText = data.email || 'N/A';
+            document.getElementById('detailStreet').innerText = data.street || 'N/A';
+            document.getElementById('detailBarangay').innerText = data.barangay || 'N/A';
+            document.getElementById('detailCity').innerText = data.city || 'N/A';
+            document.getElementById('detailRegion').innerText = data.region || 'N/A';
+
+            // Update the ID picture source
+            const idPicture = document.getElementById('detailIDPicture');
+            idPicture.src = data.idUrl || '';
+            idPicture.alt = `ID Picture of ${data.firstName || ''} ${data.lastName || ''}`;
+        }
+        
+        /**
+         * Toggles the visibility of the rejection reason dropdown.
+         */
+        function toggleRejectionDropdown(event) {
+            event.stopPropagation();
+            const rejectionDropdown = document.getElementById("rejectionDropdown");
+            rejectionDropdown.style.display = rejectionDropdown.style.display === "block" ? "none" : "block";
+        }
+
+        /**
+         * Toggles the main navigation dropdown (e.g., notifications).
+         */
+        function toggleDropdown(id) {
+            const dropdown = document.getElementById(id);
+            dropdown.classList.toggle("show");
+        }
+
+
+        // ===============================================
+        // VERIFICATION/REJECTION ACTIONS (WRITE)
+        // ===============================================
+
+        /**
+         * Generic function to update the resident's verification status in Firebase.
+         */
+        async function updateResidentStatus(status, reason = null) {
+            if (!currentResidentId) {
+                alert("Please select a resident first.");
+                return;
+            }
+            
+            const residentRef = db.collection('residents').doc(currentResidentId);
+            
+            try {
+                // Use a batched write for multiple operations, or simple update as shown
+                await residentRef.update({
+                    verificationStatus: status,
+                    // Use Firestore command to delete the rejection reason if status is Verified
+                    rejectionReason: status === 'Rejected' ? reason : firebase.firestore.FieldValue.delete()
+                });
+
+                alert(`Resident status updated to: ${status}. The list will refresh.`);
+                
+                // Hide rejection dropdown if it was a rejection
+                if (status === 'Rejected') {
+                     document.getElementById("rejectionDropdown").style.display = "none";
+                }
+                
+                // The onSnapshot listener will automatically remove the item from the pending list
+                // and potentially add it to the verified/rejected list if those tabs were active.
+                // We'll rely on the real-time listener to handle the UI update.
+            } catch (error) {
+                console.error("Error updating resident status:", error);
+                alert("Failed to update status in Firebase. Check console for security rules and details.");
+            }
+        }
+
+
+        function verifyResident() {
+            if (confirm(`Are you sure you want to VERIFY resident ${currentResidentId}?`)) {
+                updateResidentStatus('Verified');
+            }
+        }
+
+        function submitRejection() {
+            const reason = document.getElementById("rejectionReason").value;
+            if (reason) {
+                if (confirm(`Are you sure you want to REJECT resident ${currentResidentId} for reason: ${reason}?`)) {
+                    updateResidentStatus('Rejected', reason);
+                    document.getElementById("rejectionReason").value = ""; 
+                }
+            } else {
+                alert("Please select a rejection reason before submitting.");
+            }
+        }
+
+        // ===============================================
+        // INITIALIZATION
+        // ===============================================
+        
+        window.onload = function() {
+            setupFirebase();
+            // Starts by loading 'Pending' residents
+            setupRealtimeListener(); 
+        }
+
+        // Close the dropdowns if the user clicks outside of them
+        window.onclick = function(event) {
+            // Close the main navigation dropdown
+            if (!event.target.matches('.icon-btn') && !event.target.closest('.dropdown')) {
+                const dropdowns = document.getElementsByClassName("dropdown-content");
+                for (let i = 0; i < dropdowns.length; i++) {
+                    const openDropdown = dropdowns[i];
+                    if (openDropdown.classList.contains('show')) {
+                        openDropdown.classList.remove('show');
+                    }
+                }
+            }
+
+            // Close the rejection dropdown
+            const rejectionDropdown = document.getElementById("rejectionDropdown");
+            if (rejectionDropdown.style.display === "block" && !rejectionDropdown.contains(event.target) && !event.target.matches('.btn-reject')) {
+                rejectionDropdown.style.display = "none";
+            }
+        }
+
+    </script>
+</body>
+</html>

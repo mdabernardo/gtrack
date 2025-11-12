@@ -1,0 +1,160 @@
+{% load socialaccount %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f2f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .login-container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            width: 350px;
+        }
+
+        .login-container h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+
+        .forgot-password {
+            display: block;
+            text-align: right;
+            margin-bottom: 20px;
+            font-size: 0.95em;
+            color: #4285f4;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .forgot-password:hover {
+            color: #357ae8;
+            text-decoration: underline;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #357ae8;
+        }
+
+        .or-separator {
+            text-align: center;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .or-separator::before,
+        .or-separator::after {
+            content: "";
+            height: 1px;
+            background: #ccc;
+            position: absolute;
+            top: 50%;
+            width: 40%;
+        }
+
+        .or-separator::before {
+            left: 0;
+        }
+
+        .or-separator::after {
+            right: 0;
+        }
+
+        .or-separator span {
+            background: #fff;
+            padding: 0 10px;
+            color: #888;
+        }
+
+        .google-btn {
+            background: white;
+            color: black;
+            border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .google-btn img {
+            height: 20px;
+            width: 20px;
+        }
+
+        .errorlist {
+            color: red;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h2>Login</h2>
+
+        <form method="POST" action="{% url 'account_login' %}?next={% url 'dashboard' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'dashboard' %}">
+            {% if form.non_field_errors %}
+            <ul class="errorlist">{% for err in form.non_field_errors %}<li>{{ err }}</li>{% endfor %}</ul>
+            {% endif %}
+
+            <label>Email</label>
+            <input type="email" name="login" placeholder="Enter your email" required>
+            {% if form.login.errors %}
+            <ul class="errorlist">{% for err in form.login.errors %}<li>{{ err }}</li>{% endfor %}</ul>
+            {% endif %}
+
+            <label>Password</label>
+            <input type="password" name="password" placeholder="Enter your password" required>
+            {% if form.password.errors %}
+            <ul class="errorlist">{% for err in form.password.errors %}<li>{{ err }}</li>{% endfor %}</ul>
+            {% endif %}
+            
+            <a href="{% url 'account_reset_password' %}" class="forgot-password">Forgot password?</a>
+
+            <button type="submit">Login</button>
+        </form>
+
+        <div class="or-separator"><span>OR</span></div>
+
+        <a href="{% provider_login_url 'google' %}?next={% url 'dashboard' %}">
+            <button class="google-btn">
+                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg" alt="Google logo">
+            </button>
+        </a>
+    </div>
+</body>
+</html>

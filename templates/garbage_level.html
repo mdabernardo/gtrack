@@ -1,0 +1,272 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waste Level Dashboard</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #map {
+            height: 320px;
+        }
+        /* Custom marker CSS is no longer needed for Google Maps */
+    </style>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    
+    </head>
+<body class="min-h-screen flex flex-col bg-white">
+    {% include 'partials/topbar.html' with active_tab='garbage_level' %}
+    <div class="flex-grow flex justify-center items-start p-8">
+        <div class="flex flex-col md:flex-row gap-8 w-full max-w-5xl">
+            <div class="flex-1 bg-[#d1ffd0] rounded-xl shadow-md p-6">
+                <h2 class="text-2xl font-bold text-[#32a000] mb-4">Waste Level</h2>
+                <div id="map" class="w-full h-80 bg-gray-100 rounded-lg"></div>
+            </div>
+            <div class="flex-1 bg-[#d1ffd0] rounded-xl shadow-md p-6">
+                <h2 class="text-2xl font-bold text-[#32a000] mb-4">Legend</h2>
+                <ul id="legend-list" class="space-y-4">
+                </ul>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Your Firebase configuration (apiKey is used for both Firebase and Google Maps/Geocoding)
+        const firebaseConfig = {
+            // NOTE: This key is used for Firebase and the geocoding/Maps API calls.
+            // Ensure both Maps JavaScript API and Geocoding API are enabled for this key in your Google Cloud Console.
+            apiKey: "AIzaSyAmLanEMQoY6NSEcacziav2xYyr4y8UOHU",
+            authDomain: "g-trackapp.firebaseapp.com",
+            databaseURL: "https://g-trackapp-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "g-trackapp",
+            storageBucket: "g-trackapp.firebasestorage.app",
+            messagingSenderId: "172056621672",
+            appId: "1:172056621672:web:9481cda9b93cac6d7d01dd",
+            measurementId: "G-5HRRQCP4P1"
+        };
+        
+        // Initialize Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        let garbageData = [];
+        
+        const GOOGLE_MAPS_API_KEY = firebaseConfig.apiKey;
+        
+        let map; // Google Maps object
+        let geocoder; // Google Geocoder service
+        let markers = []; // Array to hold Google Maps markers
+
+        // Default location: Catmon, Malabon, Philippines
+        const defaultCenter = { lat: 14.662, lng: 120.949 }; 
+
+        // Function to initialize the Google Map
+        function initMap() {
+            // Check if the map element exists and Google Maps API has loaded
+            if (!document.getElementById('map') || typeof google === 'undefined' || !google.maps) {
+                console.error("Google Maps API did not load correctly or map element is missing.");
+                return;
+            }
+
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: defaultCenter,
+                zoom: 15,
+                // It's highly recommended to replace "DEMO_MAP_ID" with your actual Map ID for custom styling.
+                mapId: "DEMO_MAP_ID" 
+            });
+            geocoder = new google.maps.Geocoder();
+            
+            // Start fetching data once the map is ready
+            fetchGarbageLevel();
+            
+            // Set up real-time listener (it will call fetchGarbageLevel on data change)
+            db.collection("garbagelevel").onSnapshot((snapshot) => {
+                fetchGarbageLevel();
+            });
+        }
+        window.initMap = initMap; // Expose to global scope for the Google Maps script tag
+
+        // Helper function to get marker color and icon SVG
+        function getMarkerIcon(level) {
+            if (!level) return { color: '#808080', svg: '' }; // Default to gray if level is missing
+            const lowerLevel = level.toLowerCase();
+            let color = '#ff6384';
+            let label = 'H';
+
+            if (lowerLevel === 'low') {
+                color = '#4bc0c0'; // Cyan/Teal
+                label = 'L';
+            } else if (lowerLevel === 'medium') {
+                color = '#ffcd56'; // Yellow/Orange
+                label = 'M';
+            } else if (lowerLevel === 'high' || lowerLevel === 'extreme') {
+                color = '#ff6384'; // Red/Pink
+                label = 'E'; 
+            }
+
+            // A custom SVG for a circular marker
+            const svg = `
+                <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="15" cy="15" r="13" fill="${color}" stroke="white" stroke-width="2"/>
+                    <text x="15" y="20" font-family="Arial, sans-serif" font-size="14" fill="white" text-anchor="middle" font-weight="bold">${label}</text>
+                </svg>`;
+            
+            return {
+                color: color,
+                // Encodes the SVG for use as a data URL in the marker icon
+                svg: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            };
+        }
+
+        // Function to geocode an address string (using Google Geocoding)
+        async function geocodeAddress(location) {
+            return new Promise((resolve) => {
+                // geocoder is initialized in initMap
+                geocoder.geocode({ 'address': location }, function(results, status) {
+                    if (status === 'OK' && results.length > 0) {
+                        const geometry = results[0].geometry.location;
+                        resolve({
+                            latitude: geometry.lat(),
+                            longitude: geometry.lng()
+                        });
+                    } else {
+                        console.error(`Geocoding failed for ${location}: ${status}`);
+                        resolve(null);
+                    }
+                });
+            });
+        }
+
+        async function fetchGarbageLevel() {
+            try {
+                const snapshot = await db.collection("garbagelevel").get();
+                garbageData = [];
+
+                for (const doc of snapshot.docs) {
+                    const item = { id: doc.id, ...doc.data() };
+                    
+                    // Only geocode if coordinates are missing.
+                    if (!item.latitude || !item.longitude) {
+                        if (item.location) {
+                            // Append "Malabon, Philippines" to improve geocoding accuracy
+                            const coords = await geocodeAddress(item.location + ", Malabon, Philippines");
+                            if (coords) {
+                                item.latitude = coords.latitude;
+                                item.longitude = coords.longitude;
+                            }
+                        }
+                    }
+                    garbageData.push(item);
+                }
+
+                if (map) {
+                    updateDashboard();
+                } else {
+                    // This case should be rare since fetch is called after initMap, but handles race conditions.
+                    console.log("Map not initialized yet, waiting for initMap to call updateDashboard.");
+                }
+            } catch (error) {
+                console.error("Error fetching garbage data: ", error);
+            }
+        }
+
+        function updateDashboard() {
+            const legendList = document.getElementById('legend-list');
+            legendList.innerHTML = '';
+            
+            // Clear existing markers
+            markers.forEach(marker => marker.setMap(null));
+            markers = []; 
+            
+            const infoWindow = new google.maps.InfoWindow();
+
+            garbageData.forEach(item => {
+                const markerIcon = getMarkerIcon(item.garbageLevel);
+                
+                // Create Legend Item
+                const li = document.createElement('li');
+                li.className = 'flex items-center cursor-pointer hover:bg-gray-100 p-2 rounded';
+                li.innerHTML = `
+                    <span class="w-6 h-6 rounded-full" style="background-color: ${markerIcon.color};"></span>
+                    <span class="ml-3 text-gray-800 text-lg">${item.location || 'N/A'} - ${item.garbageLevel || 'N/A'}</span>
+                `;
+                legendList.appendChild(li);
+
+
+                if (item.latitude && item.longitude) {
+                    const position = { lat: item.latitude, lng: item.longitude };
+                    
+                    // Create the Google Maps Marker
+                    const marker = new google.maps.Marker({
+                        position: position,
+                        map: map,
+                        title: `${item.location} - ${item.garbageLevel}`,
+                        icon: {
+                            url: markerIcon.svg,
+                            scaledSize: new google.maps.Size(30, 30), 
+                            anchor: new google.maps.Point(15, 15), 
+                        },
+                    });
+                    
+                    // Add Info Window (Popup) listener
+                    marker.addListener("click", () => {
+                        infoWindow.setContent(`
+                            <div style="font-family: Arial;">
+                                <b>${item.location}</b><br>
+                                Waste Level: <span style="font-weight: bold; color: ${markerIcon.color};">${item.garbageLevel || 'N/A'}</span>
+                            </div>
+                        `);
+                        infoWindow.open(map, marker);
+                    });
+                    
+                    markers.push(marker);
+
+                    // Add click event to the legend item to center the map and open the info window
+                    li.addEventListener('click', () => {
+                        map.panTo(position);
+                        map.setZoom(17);
+                        // Re-open info window to draw attention to the location
+                        google.maps.event.trigger(marker, 'click');
+                    });
+                } else {
+                    console.warn(`Item with ID ${item.id} is missing coordinates or location.`);
+                }
+            });
+
+            // Re-center map to the bounds of all markers
+            if (markers.length > 0) {
+                const bounds = new google.maps.LatLngBounds();
+                markers.forEach(marker => bounds.extend(marker.getPosition()));
+                map.fitBounds(bounds);
+            } else {
+                map.setCenter(defaultCenter);
+                map.setZoom(15);
+            }
+        }
+
+
+        // --- Notification Dropdown Logic (Unchanged) ---
+        function toggleDropdown() {
+            document.getElementById("notificationDropdown").classList.toggle("hidden");
+        }
+        window.onclick = function(event) {
+            if (!event.target.closest('button[title="Notifications"]') && !event.target.closest('#notificationDropdown')) {
+                var dropdown = document.getElementById("notificationDropdown");
+                if (!dropdown.classList.contains('hidden')) {
+                    dropdown.classList.add('hidden');
+                }
+            }
+        }
+    </script>
+    
+    <script async defer loading="async"
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAmLanEMQoY6NSEcacziav2xYyr4y8UOHU&callback=initMap&libraries=geometry">
+    </script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Track Garbage Trucks{% endblock %}
+
+{% block head %}
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #f8f9fa;
+        margin: 0;
+        padding: 0;
+    }
+    .topbar {
+        background-color: #32a000;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        height: 54px;
+        padding: 0 20px;
+        color: #fff;
+    }
+    .icon-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        margin: 0 5px;
+        color: #fff;
+        padding: 0;
+        display: flex;
+        align-items: center;
+    }
+    .icon-btn svg { width: 28px; height: 28px; fill: #fff; }
+    .icon-btn.active { background-color: #256b00; border-radius: 5px; }
+    .spacer { flex-grow: 1; }
+    .dropdown { position: relative; display: inline-block; }
+    .dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 280px; box-shadow: 0px 8px 16px rgba(0,0,0,0.2); z-index: 1; right: 0; border-radius: 8px; top: 50px; font-family: Arial, sans-serif; }
+    .dropdown-content a { color: black; padding: 12px 16px; text-decoration: none; display: block; text-align: center; border-bottom: 1px solid #ddd; }
+    .dropdown-content a:hover { background-color: #f1f1f1; border-radius: 0 0 8px 8px; }
+    .dropdown-content .dropdown-item { display: flex; padding: 12px 16px; border-bottom: 1px solid #ddd; align-items: center; }
+    .dropdown-content .dropdown-item:last-child { border-bottom: none; }
+    .dropdown-content .icon { margin-right: 15px; color: #32a000; }
+    .dropdown-content .message h5 { margin: 0; font-size: 1em; color: #333; }
+    .dropdown-content .message p { margin: 0; font-size: 0.9em; color: #666; }
+    .dropdown-content .message .time { display: block; font-size: 0.8em; color: #999; margin-top: 4px; }
+    .dropdown-content.show { display: block; }
+
+    .main { padding: 20px; max-width: 1000px; margin: 0 auto; }
+    #map { height: 70vh; width: 100%; border-radius: 12px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); background: #fff; }
+    .status { margin-top: 10px; color: #333; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% include 'partials/topbar.html' with active_tab='track_trucks' %}
+{% comment %}<div class="topbar">
+    <style>.topbar-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid #fff;display:inline-block}</style>
+    <button class="icon-btn" onclick="location.href='{% url 'profile' %}'" title="Profile">
+        {% if has_custom_avatar and user_profile %}
+            <img class="topbar-avatar" src="{{ user_profile.photo.url }}" alt="Profile Avatar" />
+        {% else %}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.5-1.8 4.5-4.5S14.7 3 12 3 7.5 4.8 7.5 7.5 9.3 12 12 12zm0 2c-3 0-9 1.5-9 4.5V21h18v-2.5c0-3-6-4.5-9-4.5z"/></svg>
+        {% endif %}
+    </button>
+    <div class="spacer"></div>
+    <button class="icon-btn" onclick="location.href='{% url 'dashboard' %}'" title="Home">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L2 12h3v8h6v-6h2v6h6v-8h3L12 2zm0 14h-2v-4h2v4zm4-4h-2v4h2v-4zm-8 4H6v-4h2v4z"/></svg>
+    </button>
+    <div class="dropdown">
+        <button class="icon-btn" onclick="toggleDropdown()" title="Notifications">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C10.34 2 9 3.34 9 5V5.29C6.61 6.16 5 8.42 5 11V17L3 19V20H21V19L19 17V11C19 8.42 17.39 6.16 15 5.29V5C15 3.34 13.66 2 12 2ZM12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22Z"/></svg>
+        </button>
+        <div id="notificationDropdown" class="dropdown-content">
+            <div class="dropdown-item">
+                <div class="icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+                </div>
+                <div class="message">
+                    <h5>Collection Scheduled</h5>
+                    <p>A collection is scheduled for today.</p>
+                    <span class="time">recent</span>
+                </div>
+            </div>
+            <a href="{% url 'crud_management' %}">CRUD Management</a>
+            <a href="{% url 'notification' %}">View all notifications</a>
+        </div>
+    </div>
+    <button class="icon-btn" onclick="location.href='{% url 'garbage_level' %}'" title="Warning">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+    </button>
+    <button class="icon-btn active" onclick="location.href='{% url 'track_trucks' %}'" title="Track Trucks">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+    </button>
+    <button class="icon-btn" onclick="location.href='{% url 'help' %}'" title="Help">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 0C5.37258 0 0 5.3726 0 12C0 18.6274 5.37258 24 12 24C18.6274 24 24 18.6274 24 12C24 5.3726 18.6274 0 12 0ZM13 18H11V16H13V18ZM14.071 11.071L13.171 11.971C12.6265 12.5155 12.25 13.0796 12.25 14H11V13.5C11 12.7035 11.3765 11.9225 11.929 11.37L13.243 10.057C13.4056 9.89443 13.5 9.67652 13.5 9.5C13.5 9.22386 13.2761 9 13 9H11C10.7239 9 10.5 9.22386 10.5 9.5V10H9V9.5C9 8.39543 9.89543 7.5 11 7.5H13C14.1046 7.5 15 8.39543 15 9.5C15 10.0148 14.8042 10.5074 14.464 10.879L14.071 11.071Z"/></svg>
+    </button>
+    <button class="icon-btn" onclick="location.href='{% url 'crud_management' %}'" title="CRUD Management">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zm0-8h14V7H7v2z"/></svg>
+    </button>
+    <button class="icon-btn" onclick="location.href='{% url 'resident_verification' %}'" title="Resident Verification">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 10V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h4l-3.96 4.95a.5.5 0 0 0 .39.86H21.5a.5.5 0 0 0 .39-.86L18 12h4c1.1 0 2-.9 2-2zM4 6h16v4h-4.66a.5.5 0 0 0-.39.86L18 14.14V16h-4.34a.5.5 0 0 0-.39-.86L15.99 12.5H4V6zm16 8h-4.34a.5.5 0 0 0-.39.86L15.99 16.5H20v-2.5zm-8 4H4v2h8v-2z"/></svg>
+    </button>
+    <button class="icon-btn" onclick="location.href='{% url 'logout' %}'" title="Logout">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+    </button>
+</div>{% endcomment %}
+
+<div class="main">
+    <h1 style="color:#32a000; margin-top:0;">Track Garbage Trucks</h1>
+    <div id="map"></div>
+    <div class="status" id="status">Initializing map and real-time tracking...</div>
+
+    <div style="margin-top:8px">
+        <label for="truckSelector">Follow collector ID:</label>
+        <select id="truckSelector"></select>
+    </div>
+
+    <script>
+        function toggleDropdown() {
+            document.getElementById('notificationDropdown').classList.toggle('show');
+        }
+        window.onclick = function(event) {
+            if (!event.target.matches('.icon-btn') && !event.target.closest('.dropdown')) {
+                const dropdowns = document.getElementsByClassName('dropdown-content');
+                for (let i = 0; i < dropdowns.length; i++) {
+                    const openDropdown = dropdowns[i];
+                    if (openDropdown.classList.contains('show')) {
+                        openDropdown.classList.remove('show');
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Injected runtime config -->
+    <script>
+        window.__app_id = "{{ app_id }}";
+        window.__firebase_config = '{{ firebase_config_json|escapejs }}';
+        window.__initial_auth_token = '';
+    </script>
+
+    <!-- Load Google Maps with injected API key -->
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}"></script>
+
+    <script type="module">
+        const statusEl = document.getElementById('status');
+        const urlParams = new URLSearchParams(window.location.search);
+        const truckDocumentId = urlParams.get('truck') || '2';
+    
+        // Build an SVG truck icon as a data URL
+        function getTruckIcon(size = 16) {
+          const svg = `<?xml version="1.0" encoding="UTF-8"?>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+              <rect x="8" y="22" width="30" height="18" rx="3" fill="#32a000"/>
+              <rect x="38" y="26" width="14" height="14" rx="2" fill="#4caf50"/>
+              <rect x="44" y="24" width="6" height="6" rx="1" fill="#c8e6c9"/>
+              <circle cx="18" cy="42" r="5" fill="#263238"/>
+              <circle cx="47" cy="42" r="5" fill="#263238"/>
+              <circle cx="18" cy="42" r="2" fill="#90a4ae"/>
+              <circle cx="47" cy="42" r="2" fill="#90a4ae"/>
+            </svg>`;
+          return {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            scaledSize: new google.maps.Size(size, size),
+            anchor: new google.maps.Point(size / 2, size * 0.75),
+          };
+        }
+    
+        let map, marker;
+        function getResponsiveSize(){
+            return window.matchMedia('(max-width: 640px)').matches ? 14 : 16;
+        }
+        function initMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 14.5995, lng: 120.9842 },
+                zoom: 12,
+            });
+            const initialSize = getResponsiveSize();
+            marker = new google.maps.Marker({
+                position: { lat: 14.5995, lng: 120.9842 },
+                map,
+                title: 'Garbage Truck',
+                icon: getTruckIcon(initialSize),
+            });
+            let currentSize = initialSize;
+            window.addEventListener('resize', () => {
+                const s = getResponsiveSize();
+                if (s !== currentSize) { currentSize = s; marker.setIcon(getTruckIcon(s)); }
+            });
+        }
+        initMap();
+    
+        function updateTruckPosition(lat, lng) {
+            const pos = { lat: parseFloat(lat), lng: parseFloat(lng) };
+            marker.setPosition(pos);
+            map.setCenter(pos);
+        }
+
+        try {
+            const firebaseConfig = JSON.parse(window.__firebase_config);
+            const appId = window.__app_id || firebaseConfig.projectId;
+            const firebaseCore = await import('https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js');
+            const firebaseAuth = await import('https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js');
+            const firebaseFirestore = await import('https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js');
+            const app = firebaseCore.initializeApp(firebaseConfig);
+            const auth = firebaseAuth.getAuth(app);
+            const db = firebaseFirestore.getFirestore(app);
+            try { await firebaseAuth.signInAnonymously(auth); } catch (e) { console.warn('Anonymous auth failed:', e); }
+            // Build doc reference to top-level collectors/<id>
+            const docRef = firebaseFirestore.doc(db, 'collectors', truckDocumentId);
+            firebaseFirestore.onSnapshot(docRef, (snapshot) => {
+              const data = snapshot.data();
+              if (!data) return;
+              const lat = typeof data.latitude === 'string' ? parseFloat(data.latitude) : data.latitude;
+              const lng = typeof data.longitude === 'string' ? parseFloat(data.longitude) : data.longitude;
+              updateTruckPosition(lat, lng);
+              const statusEl = document.getElementById('status');
+              if (statusEl) statusEl.textContent = `Tracking collector ${truckDocumentId} — ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            });
+            
+            // Optional: populate a simple selector with available collector IDs
+            (async () => {
+              try {
+                const selectEl = document.getElementById('truckSelector');
+                if (!selectEl) return;
+                const qs = await firebaseFirestore.getDocs(firebaseFirestore.collection(db, 'collectors'));
+                qs.forEach((doc) => {
+                  const opt = document.createElement('option');
+                  opt.value = doc.id;
+                  opt.textContent = doc.id;
+                  if (doc.id === truckDocumentId) opt.selected = true;
+                  selectEl.appendChild(opt);
+                });
+                selectEl.addEventListener('change', (e) => {
+                  const id = e.target.value;
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('truck', id);
+                  window.location.href = url.toString();
+                });
+              } catch (err) {
+                console.warn('Unable to load collectors list', err);
+              }
+            })();
+        } catch (err) {
+            console.error('Initialization error:', err);
+            statusEl.textContent = 'Failed to initialize Firebase.';
+        }
+    </script>
+</div>
+{% endblock %}

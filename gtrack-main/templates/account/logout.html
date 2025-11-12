@@ -1,0 +1,221 @@
+{% load socialaccount %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f2f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .login-container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            width: 350px;
+        }
+
+        .login-container h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        /* Styles for Django messages */
+        .messages {
+            list-style-type: none;
+            padding: 0;
+            margin-bottom: 20px;
+        }
+
+        .messages .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        input[type="email"],
+        input[type="password"],
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+        }
+        .login-container label { display: block; margin-bottom: 8px; font-weight: 600; }
+        .help-text {
+            display: block;
+            margin-top: -12px;
+            margin-bottom: 16px;
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        /* Password toggle */
+        .password-field { position: relative; }
+        .password-field input { padding-right: 40px; height: 44px; line-height: 44px; }
+        .toggle-password {
+            position: absolute;
+            right: 9px;
+            top: 41%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: grid;
+            place-items: center;
+            z-index: 2;
+        }
+        .toggle-password svg { width: 20px; height: 20px; fill: #666; }
+
+        .forgot-password {
+            display: block;
+            text-align: right;
+            margin-bottom: 20px;
+            font-size: 0.95em;
+            color: #4285f4;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .forgot-password:hover {
+            color: #357ae8;
+            text-decoration: underline;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #357ae8;
+        }
+
+        .or-separator {
+            text-align: center;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .or-separator::before,
+        .or-separator::after {
+            content: "";
+            height: 1px;
+            background: #ccc;
+            position: absolute;
+            top: 50%;
+            width: 40%;
+        }
+
+        .or-separator::before {
+            left: 0;
+        }
+
+        .or-separator::after {
+            right: 0;
+        }
+
+        .or-separator span {
+            background: #fff;
+            padding: 0 10px;
+            color: #888;
+        }
+
+        .google-btn {
+            background: white;
+            color: black;
+            border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .google-btn img {
+            height: 20px;
+            width: 20px;
+        }
+
+        .errorlist {
+            color: red;
+            font-size: 0.9em;
+        }
+        .help-text { display: block; margin-top: 4px; margin-bottom: 16px; color: #888; font-size: 0.9em; }
+    </style>
+    
+</head>
+<body>
+    <div class="login-container">
+        <h2>Login</h2>
+
+        {# Suppress Django messages on login page to avoid logout/login banners #}
+
+        <form method="POST" action="{% url 'account_login' %}">
+            {% csrf_token %}
+
+            <label for="id_login">Email</label>
+            <input type="text" name="login" id="id_login" placeholder="Enter your email or username" required autocomplete="username">
+          
+
+            <label for="id_password">Password</label>
+            <div class="password-field">
+                <input type="password" name="password" id="id_password" placeholder="Enter your password" required autocomplete="current-password">
+                <button type="button" id="toggle_password" class="toggle-password" aria-label="Show password" title="Show password">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M12 5c-7.633 0-11 7-11 7s3.367 7 11 7 11-7 11-7-3.367-7-11-7zm0 12c-2.761 0-5-2.239-5-5s2.239-5 5-5 5 2.239 5 5-2.239 5-5 5zm0-8a3 3 0 100 6 3 3 0 000-6z"/>
+                    </svg>
+                </button>
+            </div>
+
+            
+            
+
+            <button type="submit">Login</button>
+        </form>
+
+        <div class="or-separator"><span>OR</span></div>
+
+        <a class="google-btn" href="/accounts/google/login/">
+             <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg" alt="Google logo">
+             Login with Gmail
+        </a>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        var pwd = document.getElementById('id_password');
+        var toggle = document.getElementById('toggle_password');
+        if (pwd && toggle) {
+          toggle.addEventListener('click', function () {
+            var showing = pwd.type === 'text';
+            pwd.type = showing ? 'password' : 'text';
+            toggle.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+            toggle.setAttribute('title', showing ? 'Show password' : 'Hide password');
+          });
+        }
+      });
+    </script>
+</body>
+</html>

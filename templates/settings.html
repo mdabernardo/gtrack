@@ -1,0 +1,153 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Settings</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <style>
+        body {
+            background: #fff;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .topbar {
+            background: #32a000;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            height: 54px;
+        }
+        .topbar .title {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .main {
+            background: #5dbb29;
+            min-height: 92vh;
+            padding: 36px 0 20px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .settings-container {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+            padding: 28px 32px;
+            min-width: 320px;
+            margin-top: 40px;
+        }
+        .settings-title {
+            font-size: 1.4em;
+            color: #32a000;
+            margin-bottom: 16px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 18px;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            color: #222;
+            margin-bottom: 5px;
+        }
+        input[type="text"], input[type="email"], input[type="password"], select {
+            width: 100%;
+            padding: 8px 9px;
+            border: 1px solid #b3d9a7;
+            border-radius: 5px;
+            font-size: 1em;
+        }
+        .btn-main {
+            background: #32a000;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 30px;
+            font-size: 1em;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+        .btn-main:hover {
+            background: #256b00;
+        }
+        .section-divider {
+            margin: 28px 0 18px 0;
+            border-top: 1px solid #cce6bb;
+        }
+        @media (max-width: 600px) {
+            .settings-container { min-width: 90vw; }
+        }
+    </style>
+</head>
+<body>
+{% include 'partials/topbar.html' with active_tab='settings' %}
+    {% comment %}<div class="topbar">
+        <style>
+            .icon-btn{background:transparent;border:none;color:#fff;cursor:pointer;padding:10px;border-radius:8px;display:flex;align-items:center;justify-content:center}
+            .spacer{flex:1}
+            .topbar-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid #fff;display:inline-block}
+        </style>
+        <button class="icon-btn" onclick="location.href='{% url 'profile' %}'" title="Profile">
+            {% if has_custom_avatar and user_profile %}
+                <img class="topbar-avatar" src="{{ user_profile.photo.url }}" alt="Profile Avatar" />
+            {% else %}
+                <img src="{% static 'img/user.png' %}" alt="Profile">
+            {% endif %}
+        </button>
+        <div class="spacer"></div>
+        <img src="{% static 'img/settings.png' %}" alt="Settings" style="width:32px;height:32px;margin-right:10px;">
+        <span class="title">Settings</span>
+    </div>{% endcomment %}
+    <div class="main">
+        <div class="settings-container">
+            <div class="settings-title">Account Settings</div>
+            <form method="post">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" value="{{ user.username }}" disabled>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" value="{{ user.email }}">
+                </div>
+                <div class="form-group">
+                    <label for="notification">Notifications</label>
+                    <select id="notification" name="notification">
+                        <option value="all">All Notifications</option>
+                        <option value="important">Important Only</option>
+                        <option value="none">None</option>
+                    </select>
+                </div>
+                <button class="btn-main" type="submit">Save Changes</button>
+            </form>
+            <div class="section-divider"></div>
+            <div class="settings-title" style="font-size:1.15em;">Change Password</div>
+            <form method="post" action="{% url 'password_change' %}">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="old_password">Current Password</label>
+                    <input type="password" id="old_password" name="old_password" required>
+                </div>
+                <div class="form-group">
+                    <label for="new_password1">New Password</label>
+                    <input type="password" id="new_password1" name="new_password1" required>
+                </div>
+                <div class="form-group">
+                    <label for="new_password2">Confirm New Password</label>
+                    <input type="password" id="new_password2" name="new_password2" required>
+                </div>
+                <button class="btn-main" type="submit">Change Password</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

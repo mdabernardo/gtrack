@@ -1,0 +1,396 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>My Profile</title>
+    <style>
+        body {
+            background: #5dbb29; /* Main background color from dashboard */
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .topbar {
+            background: #32a000; /* Top bar color from dashboard */
+            color: #fff;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            height: 54px;
+        }
+
+        .topbar .icon-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            margin: 0 7px;
+            font-size: 22px;
+            color: #fff;
+        }
+
+        .topbar .icon-btn img, .topbar .icon-btn svg {
+            width: 28px;
+            height: 28px;
+            vertical-align: middle;
+            fill: currentColor; /* Allows SVG color to be changed by parent */
+        }
+
+        .topbar .icon-btn:hover {
+            background-color: rgba(255, 255, 255, 0.15); /* Light hover effect */
+            border-radius: 50%;
+        }
+        
+        .topbar .icon-btn.active {
+            background-color: #fff;
+            color: #32a000;
+        }
+        
+        .spacer {
+            flex: 1;
+        }
+
+        .main {
+            min-height: 92vh;
+            padding: 36px 0 20px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 90%;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+            padding: 24px;
+        }
+
+        .profile-header {
+            margin-bottom: 24px;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 15px;
+        }
+
+        .profile-header h2 {
+            color: #222;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .profile-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 40px;
+            justify-content: center;
+        }
+
+        .profile-photo-block {
+            flex: 0 0 200px;
+            text-align: center;
+        }
+
+        .profile-photo {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #32a000; /* Main green color */
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 12px;
+        }
+
+        .photo-overlay-btn {
+            display: inline-block;
+            padding: 7px 18px;
+            background: #32a000; /* Main green color */
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-weight: normal;
+        }
+
+        .photo-overlay-btn:hover {
+            background: #256b00; /* Darker green for hover */
+        }
+        
+        #photo-input {
+            display: none;
+        }
+
+        .profile-username {
+            font-weight: bold;
+            margin-top: 10px;
+            color: #555;
+            font-size: 1.1em;
+        }
+
+        .profile-form-block {
+            flex: 1 1 350px;
+        }
+
+        .btn-main {
+            background: #32a000;
+            color: #fff;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            margin-top: 15px;
+            font-size: 1.05em;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-main:hover {
+            background: #256b00;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #495057;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 1em;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .form-group input:focus {
+            border-color: #32a000;
+            box-shadow: 0 0 0 0.2rem rgba(50, 160, 0, 0.25);
+            outline: 0;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 650px) {
+            .container {
+                padding: 14px;
+                margin: 20px;
+            }
+
+            .profile-row {
+                flex-direction: column;
+                gap: 20px;
+            }
+        }
+        
+        /* Dropdown styles from dashboard for consistency */
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            background-color: #f9f9f9;
+            min-width: 300px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        
+        .dropdown-content.show {
+            display: block;
+        }
+
+        .dropdown-content .dropdown-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #333;
+            transition: background-color 0.2s;
+        }
+
+        .dropdown-content .dropdown-item:hover {
+            background-color: #f1f1f1;
+        }
+
+        .dropdown-content .dropdown-item .icon {
+            color: #32a000;
+        }
+
+        .dropdown-content .dropdown-item h5 {
+            margin: 0;
+            font-size: 1em;
+            font-weight: bold;
+        }
+
+        .dropdown-content .dropdown-item p {
+            margin: 0;
+            font-size: 0.9em;
+            color: #555;
+        }
+
+        .dropdown-content .dropdown-item .time {
+            font-size: 0.8em;
+            color: #999;
+            white-space: nowrap;
+        }
+
+        .dropdown-content a {
+            display: block;
+            text-align: center;
+            padding: 10px 16px;
+            text-decoration: none;
+            color: #32a000;
+            font-weight: bold;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="topbar">
+        <button class="icon-btn" onclick="location.href='{% url 'profile' %}'" title="Profile">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 12c2.7 0 4.5-1.8 4.5-4.5S14.7 3 12 3 7.5 4.8 7.5 7.5 9.3 12 12 12zm0 2c-3 0-9 1.5-9 4.5V21h18v-2.5c0-3-6-4.5-9-4.5z"/>
+            </svg>
+        </button>
+        <div class="spacer"></div>
+        <div class="spacer"></div>
+        <button class="icon-btn" onclick="location.href='{% url 'dashboard' %}'" title="Dashboard">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L2 12h3v8h6v-6h2v6h6v-8h3L12 2zm0 14h-2v-4h2v4zm4-4h-2v4h2v-4zm-8 4H6v-4h2v4z"/>
+            </svg>
+        </button>
+        <div class="dropdown">
+            <button class="icon-btn" onclick="toggleDropdown()" title="Notifications">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C10.34 2 9 3.34 9 5V5.29C6.61 6.16 5 8.42 5 11V17L3 19V20H21V19L19 17V11C19 8.42 17.39 6.16 15 5.29V5C15 3.34 13.66 2 12 2ZM12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22Z"/>
+                </svg>
+            </button>
+            <div id="notificationDropdown" class="dropdown-content">
+                <div class="dropdown-item">
+                    <div class="icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm10 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z" />
+                        </svg>
+                    </div>
+                    <div class="message">
+                        <h5>Collection Scheduled</h5>
+                        <p>A collection for Valdez is scheduled for today at 2 PM.</p>
+                        <span class="time">2 hours ago</span>
+                    </div>
+                </div>
+                <a href="{% url 'notification' %}">View all notifications</a>
+            </div>
+        </div>
+        <button class="icon-btn" onclick="location.href='{% url 'garbage_level' %}'" title="Warnings">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+            </svg>
+        </button>
+        <button class="icon-btn" onclick="location.href='{% url 'track_trucks' %}'" title="Track Trucks">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm10 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+            </svg>
+        </button>
+        <button class="icon-btn" onclick="location.href='{% url 'help' %}'" title="Help">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0C5.37258 0 0 5.3726 0 12C0 18.6274 5.37258 24 12 24C18.6274 24 24 18.6274 24 12C24 5.3726 18.6274 0 12 0ZM13 18H11V16H13V18ZM14.071 11.071L13.171 11.971C12.6265 12.5155 12.25 13.0796 12.25 14H11V13.5C11 12.7035 11.3765 11.9225 11.929 11.37L13.243 10.057C13.4056 9.89443 13.5 9.67652 13.5 9.5C13.5 9.22386 13.2761 9 13 9H11C10.7239 9 10.5 9.22386 10.5 9.5V10H9V9.5C9 8.39543 9.89543 7.5 11 7.5H13C14.1046 7.5 15 8.39543 15 9.5C15 10.0148 14.8042 10.5074 14.464 10.879L14.071 11.071Z"/>
+            </svg>
+        </button>
+        <button class="icon-btn" onclick="location.href='{% url 'resident_verification' %}'" title="Resident Verification">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M22 10V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h4l-3.96 4.95a.5.5 0 0 0 .39.86H21.5a.5.5 0 0 0 .39-.86L18 12h4c1.1 0 2-.9 2-2zM4 6h16v4h-4.66a.5.5 0 0 0-.39.86L18 14.14V16h-4.34a.5.5 0 0 0-.39-.86L15.99 12.5H4V6zm16 8h-4.34a.5.5 0 0 0-.39.86L15.99 16.5H20v-2.5zm-8 4H4v2h8v-2z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'settings' %}'" title="Settings">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 8c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="main">
+        <div class="container">
+            <div class="profile-header">
+                <h2>My Profile</h2>
+            </div>
+            <div class="profile-row">
+                <div class="profile-photo-block">
+                    <img src="{% static 'img/default.jpg' %}" alt="Profile Photo" class="profile-photo" id="profile-preview">
+                    <label class="photo-overlay-btn" for="photo-input">Change Photo</label>
+                    <input type="file" id="photo-input" name="photo" accept="image/*">
+                    <div class="profile-username">Username: <span id="username-display">Loading...</span></div>
+                </div>
+                <div class="profile-form-block">
+                    <form id="profile-form">
+                        <div class="form-group">
+                            <label for="firstname-input">First Name</label>
+                            <input type="text" id="firstname-input" name="firstname">
+                        </div>
+                        <div class="form-group">
+                            <label for="lastname-input">Last Name</label>
+                            <input type="text" id="lastname-input" name="lastname">
+                        </div>
+                        <div class="form-group">
+                            <label for="contact-input">Contact Number</label>
+                            <input type="text" id="contact-input" name="contact_number">
+                        </div>
+                        <div class="form-group">
+                            <label for="email-input">Email Address</label>
+                            <input type="email" id="email-input" name="email">
+                        </div>
+                        <button type="submit" class="btn-main">Save Changes</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-storage-compat.js"></script>
+
+    <script>
+        // Live preview for profile photo
+        document.getElementById('photo-input').addEventListener('change', function(event) {
+            const [file] = event.target.files;
+            if (file) {
+                document.getElementById('profile-preview').src = URL.createObjectURL(file);
+            }
+        });
+        
+        // Notification dropdown toggle function
+        function toggleDropdown() {
+            document.getElementById("notificationDropdown").classList.toggle("show");
+        }
+
+        // Close the dropdown if the user clicks outside of it
+        window.onclick = function(event) {
+            if (!event.target.matches('.icon-btn')) {
+                const dropdowns = document.getElementsByClassName("dropdown-content");
+                for (let i = 0; i < dropdowns.length; i++) {
+                    const openDropdown = dropdowns[i];
+                    if (openDropdown.classList.contains('show')) {
+                        openDropdown.classList.remove('show');
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <script src="{% static 'js/profile.js' %}"></script>
+
+</body>
+</html>
