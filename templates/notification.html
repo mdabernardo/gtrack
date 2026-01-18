@@ -1,0 +1,484 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTrack Notifications - Pending Residents</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <!-- Removed duplicate initialization script to avoid DOM errors and conflicts. Logic consolidated in the bottom script block. -->
+    <style>
+        /* General styling, consistent with dashboard.html */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Topbar styling */
+        .topbar {
+            background-color: #32a000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 54px;
+            padding: 0 20px;
+        }
+        .topbar .icon-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            margin: 0 5px;
+            color: #fff;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+        .topbar .icon-btn svg {
+            width: 28px;
+            height: 28px;
+            fill: #fff;
+        }
+        .topbar .spacer {
+            flex-grow: 1;
+        }
+        .topbar .icon-btn.active {
+            background-color: #256b00;
+            border-radius: 5px;
+        }
+        
+        /* Dropdown styling */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 280px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 1; right: 0; border-radius: 8px; top: 50px; font-family: Arial, sans-serif; }
+        .dropdown-content a { color: black; padding: 12px 16px; text-decoration: none; display: block; text-align: center; border-bottom: 1px solid #ddd; }
+        .dropdown-content a:hover { background-color: #f1f1f1; border-radius: 0 0 8px 8px; }
+        .dropdown-content .dropdown-item { display: flex; padding: 12px 16px; border-bottom: 1px solid #ddd; align-items: center; }
+        .dropdown-content .dropdown-item:last-child { border-bottom: none; }
+        .dropdown-content .icon { margin-right: 15px; color: #32a000; }
+        .dropdown-content .message h5 { margin: 0; font-size: 1em; color: #333; }
+        .dropdown-content .message p { margin: 0; font-size: 0.9em; color: #666; }
+        .dropdown-content .message .time { display: block; font-size: 0.8em; color: #999; margin-top: 4px; }
+        .dropdown-content.show { display: block; }
+        
+        /* MAIN CONTENT AND CARD STYLING */
+        .main {
+            padding: 40px 20px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #32a000;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+        .notifications-container {
+            display: grid;
+            gap: 20px;
+        }
+        
+        .notification-card {
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            border-left: 5px solid #5dbb29;
+        }
+        .notification-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+        
+        .notification-card h3 {
+            color: #333;
+            font-size: 1.3em;
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .notification-card p {
+            margin: 5px 0;
+            color: #555;
+            font-size: 0.95em;
+        }
+        .notification-card p strong {
+            color: #32a000;
+        }
+        
+        /* ACTION BUTTONS */
+        .actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .btn-approve, .btn-reject {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn-approve {
+            background-color: #5dbb29;
+            color: white;
+        }
+        .btn-approve:hover {
+            background-color: #4a9e22;
+        }
+        .btn-reject {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-reject:hover {
+            background-color: #c82333;
+        }
+
+        /* NOTIFICATION BADGE STYLING */
+        #notification-badge {
+            position: absolute;
+            top: -5px; 
+            right: -5px; 
+            background-color: #dc3545;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 6px;
+            font-size: 10px;
+            font-weight: bold;
+            text-align: center;
+            display: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+{% include 'partials/topbar.html' with active_tab='notification' %}
+    
+    {% comment %}<div class="topbar">
+        <style>.topbar-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid #fff;display:inline-block}</style>
+        <button class="icon-btn" onclick="location.href='{% url 'profile' %}'" title="Profile">
+            {% if has_custom_avatar and user_profile %}
+                <img class="topbar-avatar" src="{{ user_profile.photo.url }}" alt="Profile Avatar" />
+            {% else %}
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.5-1.8 4.5-4.5S14.7 3 12 3 7.5 4.8 7.5 7.5 9.3 12 12 12zm0 2c-3 0-9 1.5-9 4.5V21h18v-2.5c0-3-6-4.5-9-4.5z"/></svg>
+            {% endif %}
+        </button>
+
+        <div class="spacer"></div>
+        <button class="icon-btn" onclick="location.href='{% url 'dashboard' %}'" title="Home">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L2 12h3v8h6v-6h2v6h6v-8h3L12 2zm0 14h-2v-4h2v4zm4-4h-2v4h2v-4zm-8 4H6v-4h2v4z"/>
+            </svg>
+        </button>
+        
+        <div class="dropdown">
+            <button class="icon-btn active" onclick="toggleDropdown()" title="Notifications">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C10.34 2 9 3.34 9 5V5.29C6.61 6.16 5 8.42 5 11V17L3 19V20H21V19L19 17V11C19 8.42 17.39 6.16 15 5.29V5C15 3.34 13.66 2 12 2ZM12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22Z"/>
+                </svg>
+                <span id="notification-badge">0</span>
+            </button>
+            <div id="notificationDropdown" class="dropdown-content">
+                <div class="dropdown-item">
+                    <div class="icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm10 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+                    </div>
+                    <div class="message">
+                        <h5>Collection Scheduled</h5>
+                        <p>A collection for Valdez is scheduled for today at 2 PM.</p>
+                        <span class="time">2 hours ago</span>
+                    </div>
+                </div>
+                <a href="{% url 'crud_management' %}">CRUD Management</a>
+                <a href="{% url 'notification' %}">View all notifications</a>
+            </div>
+        </div>
+
+        <button class="icon-btn" onclick="location.href='{% url 'garbage_level' %}'" title="Warning">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'track_trucks' %}'" title="Track Trucks">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'help' %}'" title="Help">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0C5.37258 0 0 5.3726 0 12C0 18.6274 5.37258 24 12 24C18.6274 24 24 18.6274 24 12C24 5.3726 18.6274 0 12 0ZM13 18H11V16H13V18ZM14.071 11.071L13.171 11.971C12.6265 12.5155 12.25 13.0796 12.25 14H11V13.5C11 12.7035 11.3765 11.9225 11.929 11.37L13.243 10.057C13.4056 9.89443 13.5 9.67652 13.5 9.5C13.5 9.22386 13.2761 9 13 9H11C10.7239 9 10.5 9.22386 10.5 9.5V10H9V9.5C9 8.39543 9.89543 7.5 11 7.5H13C14.1046 7.5 15 8.39543 15 9.5C15 10.0148 14.8042 10.5074 14.464 10.879L14.071 11.071Z"/>
+            </svg>
+        </button>
+        
+        <button class="icon-btn" onclick="location.href='{% url 'crud_management' %}'" title="CRUD Management">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zm0-8h14V7H7v2z"/>
+            </svg>
+        </button>
+        
+        <button class="icon-btn active" onclick="location.href='{% url 'resident_verification' %}'" title="Resident Verification">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24" aria-label="Resident Verification">
+                <path d="M22 10V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h4l-3.96 4.95a.5.5 0 0 0 .39.86H21.5a.5.5 0 0 0 .39-.86L18 12h4c1.1 0 2-.9 2-2zM4 6h16v4h-4.66a.5.5 0 0 0-.39.86L18 14.14V16h-4.34a.5.5 0 0 0-.39-.86L15.99 12.5H4V6zm16 8h-4.34a.5.5 0 0 0-.39.86L15.99 16.5H20v-2.5zm-8 4H4v2h8v-2z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'logout' %}'" title="Logout">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+            </svg>
+        </button>
+    </div>{% endcomment %}
+    
+    <div class="main">
+        <h1>Pending Resident Verifications</h1>
+        <div id="notifications-container" class="notifications-container">
+            <p style="text-align:center;">Loading pending residents...</p>
+        </div>
+    </div>
+    
+    <script>
+        // ===============================================
+        // 1. FIREBASE INITIALIZATION
+        // ===============================================
+        const firebaseConfig = JSON.parse('{{ firebase_config_json|escapejs }}');
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.firestore();
+        const container = document.getElementById('notifications-container');
+        const notificationBadge = document.getElementById('notification-badge');
+
+        // Ensure we have an auth session for rules that require authentication
+        async function ensureAuth() {
+            try {
+                if (firebase.auth && !firebase.auth().currentUser) {
+                    await firebase.auth().signInAnonymously();
+                }
+            } catch (err) {
+                console.warn('Anonymous sign-in failed (continuing to fallback if needed):', err);
+            }
+        }
+
+        // ===============================================
+        // 2. REALTIME DATA FETCHING AND UI UPDATE
+        // ===============================================
+
+        async function setupRealtimeListener() {
+            await ensureAuth();
+            // Target the 'residents' collection with a 'verificationStatus' filter
+            const pendingResidentsRef = db.collection("residents")
+                                         .where("verificationStatus", "==", "Pending");
+
+            pendingResidentsRef.onSnapshot((snapshot) => {
+                console.log("Firebase snapshot received.", { count: snapshot.size });
+                container.innerHTML = ''; 
+                const pendingCount = snapshot.size;
+
+                // Update the Notification Badge (guard against missing element)
+                if (notificationBadge) {
+                    if (pendingCount > 0) {
+                        notificationBadge.textContent = pendingCount;
+                        notificationBadge.style.display = 'block';
+                    } else {
+                        notificationBadge.style.display = 'none';
+                    }
+                }
+                
+                if (snapshot.empty) {
+                    container.innerHTML = '<p style="text-align:center; padding: 20px; font-style: italic;">No new residents pending verification.</p>';
+                    return;
+                }
+
+                const docs = snapshot.docs.map(d => ({ id: d.id, data: d.data() }));
+                docs.sort((a, b) => {
+                    const at = a.data.timestamp;
+                    const bt = b.data.timestamp;
+                    const aMillis = at && typeof at.toMillis === 'function' ? at.toMillis() : 0;
+                    const bMillis = bt && typeof bt.toMillis === 'function' ? bt.toMillis() : 0;
+                    return bMillis - aMillis;
+                });
+
+                docs.forEach(({ id: residentId, data: resident }) => {
+                    const item = document.createElement('div');
+                    item.className = 'notification-card';
+                    item.innerHTML = `
+                        <h3>New Resident Registration</h3>
+                        <p><strong>Name:</strong> ${resident.firstName || ''} ${resident.lastName || ''}</p>
+                        <p><strong>Username:</strong> ${resident.username || 'N/A'}</p>
+                        <p><strong>Address:</strong> ${resident.address || 'N/A'}</p>
+                        <p><strong>Email:</strong> ${resident.email || 'N/A'}</p>
+                        <div class="actions">
+                            <button class="btn-approve" onclick="approveResident('${residentId}')">Approve</button>
+                            <button class="btn-reject" onclick="rejectResident('${residentId}')">Reject</button>
+                        </div>
+                    `;
+                    container.appendChild(item);
+                });
+            }, (error) => {
+                const code = (error && error.code) || 'unknown';
+                console.warn('Realtime listener issue, switching to REST fallback.', { code });
+                container.innerHTML = '<p style="color:#c00; text-align:center; padding: 20px;">Realtime loading failed. Loading from backend…</p>';
+                loadFromApiFallback();
+            });
+        }
+
+        // ===============================================
+        // 3. ACTION FUNCTIONS (Approve/Reject)
+        // ===============================================
+        async function approveResident(id) {
+            if (!confirm("Are you sure you want to approve this resident?")) return;
+            try {
+                const docRef = db.collection("residents").doc(id);
+                await docRef.update({
+                    verificationStatus: "Verified",
+                    verificationDate: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                alert(`Resident ${id} approved successfully!`);
+            } catch (error) {
+                console.error("Error approving resident: ", error);
+                alert("Failed to approve resident. Check console for details.");
+            }
+        }
+
+        async function rejectResident(id) {
+            if (!confirm("Are you sure you want to reject this resident?")) return;
+            try {
+                const docRef = db.collection("residents").doc(id);
+                await docRef.update({
+                    verificationStatus: "Rejected"
+                });
+                alert(`Resident ${id} rejected. List updating...`);
+            } catch (error) {
+                console.error("Error rejecting resident: ", error);
+                alert("Failed to reject resident. Check console for details.");
+            }
+        }
+
+        // Backend REST fallback loader for pending residents
+        async function loadFromApiFallback() {
+            try {
+                const res = await fetch('/api/residents/?is_verified=false', {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!res.ok) throw new Error('API error');
+                const data = await res.json();
+                const items = (Array.isArray(data) ? data : data.results || []);
+
+                container.innerHTML = '';
+                const count = items.length;
+                if (notificationBadge) {
+                    if (count > 0) {
+                        notificationBadge.textContent = count;
+                        notificationBadge.style.display = 'block';
+                    } else {
+                        notificationBadge.style.display = 'none';
+                    }
+                }
+                if (count === 0) {
+                    container.innerHTML = '<p style="text-align:center; padding: 20px; font-style: italic;">No pending residents from backend.</p>';
+                }
+
+                items.forEach(r => {
+                    const item = document.createElement('div');
+                    item.className = 'notification-card';
+                    item.dataset.residentId = r.id;
+                    const fullName = (r.name || `${r.user_details?.first_name || ''} ${r.user_details?.last_name || ''}`).trim() || 'N/A';
+                    const username = r.user_details?.username || 'N/A';
+                    const address = r.address || r.fullAddress || 'N/A';
+                    const email = r.user_details?.email || 'N/A';
+                    item.innerHTML = `
+                        <h3>New Resident Registration</h3>
+                        <p><strong>Name:</strong> ${fullName}</p>
+                        <p><strong>Username:</strong> ${username}</p>
+                        <p><strong>Address:</strong> ${address}</p>
+                        <p><strong>Email:</strong> ${email}</p>
+                        <div class="actions">
+                            <button class="btn-approve" onclick="approveResidentApi(${r.id}, this.closest('.notification-card'))">Approve</button>
+                            <button class="btn-reject" onclick="rejectResidentApi(${r.id}, this.closest('.notification-card'))">Reject</button>
+                        </div>
+                    `;
+                    container.appendChild(item);
+                });
+            } catch (e) {
+                console.error('Fallback API failed', e);
+                container.innerHTML = `<p style="color:red; text-align:center; padding: 20px;">❌ ERROR: Fallback API failed. Please check backend.</p>`;
+            }
+        }
+
+        // ===============================================
+        // 4. RUNTIME & MISC LOGIC
+        // ===============================================
+
+        // CSRF helper for DRF session-auth POSTs
+        function getCsrfToken() {
+            const match = document.cookie.match(/csrftoken=([^;]+)/);
+            return match ? match[1] : '';
+        }
+
+        async function approveResidentApi(id, cardEl) {
+            if (!confirm("Approve this resident?")) return;
+            try {
+                const res = await fetch(`/api/residents/${id}/verify/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCsrfToken() },
+                    credentials: 'same-origin'
+                });
+                if (!res.ok) throw new Error(`Verify failed: ${res.status}`);
+                // Remove card and update badge
+                if (cardEl) cardEl.remove();
+                if (notificationBadge) {
+                    const current = parseInt(notificationBadge.textContent || '0', 10);
+                    const next = Math.max(0, current - 1);
+                    notificationBadge.textContent = next;
+                    notificationBadge.style.display = next > 0 ? 'block' : 'none';
+                }
+                alert('Resident approved.');
+            } catch (err) {
+                console.error(err);
+                alert('Failed to approve via backend.');
+            }
+        }
+
+        async function rejectResidentApi(id, cardEl) {
+            if (!confirm("Reject this resident?")) return;
+            try {
+                const res = await fetch(`/api/residents/${id}/reject/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCsrfToken() },
+                    credentials: 'same-origin'
+                });
+                if (!res.ok) throw new Error(`Reject failed: ${res.status}`);
+                // Remove card and update badge
+                if (cardEl) cardEl.remove();
+                if (notificationBadge) {
+                    const current = parseInt(notificationBadge.textContent || '0', 10);
+                    const next = Math.max(0, current - 1);
+                    notificationBadge.textContent = next;
+                    notificationBadge.style.display = next > 0 ? 'block' : 'none';
+                }
+                alert('Resident rejected.');
+            } catch (err) {
+                console.error(err);
+                alert('Failed to reject via backend.');
+            }
+        }
+
+        setupRealtimeListener();
+        window.approveResident = approveResident;
+        window.rejectResident = rejectResident;
+        window.approveResidentApi = approveResidentApi;
+        window.rejectResidentApi = rejectResidentApi;
+    </script>
+</body>
+</html>

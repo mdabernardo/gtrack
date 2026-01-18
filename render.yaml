@@ -1,0 +1,31 @@
+databases:
+  - name: gtrack-db
+    plan: free
+
+services:
+  - type: web
+    name: gtrack
+    env: python
+    buildCommand: |
+      pip install --upgrade pip setuptools wheel
+      pip install -r requirements.txt
+    startCommand: python manage.py migrate --noinput && gunicorn gtrack.wsgi:application --bind 0.0.0.0:$PORT
+    autoDeploy: true
+    postDeployCommand: |
+      python manage.py migrate --noinput
+      python manage.py collectstatic --noinput
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: gtrack.settings
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gtrack-db
+          property: connectionString
+      - key: GOOGLE_CLIENT_ID
+        value: ""
+      - key: GOOGLE_CLIENT_SECRET
+        value: ""

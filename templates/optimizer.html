@@ -1,0 +1,154 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Route Optimizer</title>
+  <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+  <style>
+    body{font-family:Arial,sans-serif;background:#f8f9fa;margin:0}
+    .page{max-width:1100px;margin:20px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:16px}
+    .row{display:flex;gap:16px;align-items:flex-start}
+    .col{flex:1}
+    .controls{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+    select,button{font-size:14px}
+    #suggestedList{height:360px;overflow:auto;border:1px solid #eee;border-radius:8px;padding:8px}
+    #optimizationMap{height:360px;border:1px solid #eee;border-radius:8px}
+    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .title{font-weight:700;font-size:18px;color:#0b2f11}
+    .muted{color:#6b7280}
+    .pill{background:#e5f5e0;color:#256b00;border-radius:999px;padding:4px 8px;font-size:12px}
+  </style>
+</head>
+<body>
+  {% include 'partials/topbar.html' %}
+
+  <div class="page">
+    <div class="card">
+      <div class="header">
+        <div class="title">AI Route Optimizer</div>
+        <div><span id="totalKm" class="pill">— km total</span></div>
+      </div>
+      <div class="controls">
+        <select id="routeSelect">
+          <option value="">Select a route...</option>
+        </select>
+        <button id="optimizeBtn" class="btn btn-success">Optimize Route</button>
+        <span class="muted">Choose an existing route or an auto option.</span>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <div class="muted" style="margin:6px 0">Suggested Order</div>
+          <div id="suggestedList">Pick a route and click Optimize.</div>
+        </div>
+        <div class="col">
+          <div class="muted" style="margin:6px 0">Mini Map</div>
+          <div id="optimizationMap"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script>
+    // Initialize Firebase from server-provided config
+    const firebaseConfig = {{ firebase_config_json|safe }};
+    if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+    const db = firebase.firestore();
+
+    // Populate route selector: backend routes + auto options
+    async function populateRoutes(){
+      const sel = document.getElementById('routeSelect');
+      sel.innerHTML = '<option value="">Select a route...</option>';
+      try {
+        const res = await fetch('/api/routes/');
+        if(res.ok){
+          const routes = await res.json();
+          routes.forEach(r=>{
+            const opt=document.createElement('option');
+            opt.value = r.id;
+            opt.textContent = r.name || (`Route #${r.id}`);
+            sel.appendChild(opt);
+          });
+        }
+      } catch(e){ console.warn('Failed to load routes', e); }
+      // Auto options
+      const groupLabel = document.createElement('optgroup');
+      groupLabel.label = 'Auto by Garbage Level';
+      [['auto-high','High garbage drop-offs'],['auto-medium','Medium garbage drop-offs'],['auto-low','Low garbage drop-offs']]
+        .forEach(([val,text])=>{const o=document.createElement('option');o.value=val;o.textContent=text;groupLabel.appendChild(o);});
+      sel.appendChild(groupLabel);
+    }
+
+    // Firestore helpers: garbage + dropoffs
+    async function fetchGarbageAndDropoffs(){
+      const gSnap = await db.collection('garbagelevel').get();
+      const dSnap = await db.collection('dropofflocation').get();
+      const dropMap = new Map();
+      dSnap.forEach(doc=>{ const d=doc.data(); dropMap.set((d.name||d.id||doc.id).toLowerCase(), d); });
+      const items=[];
+      gSnap.forEach(doc=>{
+        const g=doc.data(); const key=(g.locationName||g.name||g.id||doc.id||'').toLowerCase();
+        const d=dropMap.get(key);
+        if(d && typeof g.level!=='undefined'){
+          items.push({ name: d.name||key, lat:d.lat||d.latitude, lng:d.lng||d.longitude, level: (g.level||'low').toString().toLowerCase() });
+        }
+      });
+      return items.filter(i=>i.lat && i.lng);
+    }
+
+    // Simple geometry + greedy ordering
+    function haversineKm(a,b){ const R=6371; const dLat=(b.lat-a.lat)*Math.PI/180; const dLng=(b.lng-a.lng)*Math.PI/180; const s1=Math.sin(dLat/2), s2=Math.sin(dLng/2); const q=s1*s1 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*s2*s2; const c=2*Math.atan2(Math.sqrt(q),Math.sqrt(1-q)); return R*c; }
+    function greedyNearest(points){ if(points.length<=1) return points.slice(); const unvisited=points.slice(); const route=[unvisited.shift()]; while(unvisited.length){ let bestI=0,bestD=Infinity; for(let i=0;i<unvisited.length;i++){ const d=haversineKm(route[route.length-1],unvisited[i]); if(d<bestD){bestD=d;bestI=i;} } route.push(unvisited.splice(bestI,1)[0]); } return route; }
+
+    async function optimizeAuto(level){
+      const all = await fetchGarbageAndDropoffs();
+      const target = level.replace('auto-','');
+      const choices = all.filter(x=>x.level.includes(target));
+      if(!choices.length){ renderList([], 0, 'No matching drop-offs for '+target); return; }
+      const ordered = greedyNearest(choices);
+      const total = ordered.reduce((acc,cur,i)=> i? acc + haversineKm(ordered[i-1], cur) : 0, 0);
+      renderList(ordered, total);
+      renderMap(ordered);
+    }
+
+    // Backend optimizer
+    async function optimizeBackend(id){
+      const res = await fetch(`/api/routes/${id}/optimize/`);
+      if(!res.ok){ renderList([],0,'Failed to optimize via API'); return; }
+      const data = await res.json();
+      const pts = (data.suggested_points||[]).map(p=>({name:p.name||p.label||p.id, lat:p.lat||p.latitude, lng:p.lng||p.longitude})).filter(p=>p.lat&&p.lng);
+      const total = data.total_distance_km || 0;
+      renderList(pts,total);
+      renderMap(pts);
+    }
+
+    // UI rendering
+    function renderList(points, totalKm, emptyMsg){
+      const list = document.getElementById('suggestedList');
+      document.getElementById('totalKm').textContent = `${(totalKm||0).toFixed(2)} km total`;
+      if(!points.length){ list.innerHTML = `<div class="muted">${emptyMsg||'No points available.'}</div>`; return; }
+      list.innerHTML = points.map((p,i)=>`<div>${i+1}. ${p.name} — (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})</div>`).join('');
+    }
+    let _map, _poly;
+    function ensureMap(){ if(_map) return _map; _map = new google.maps.Map(document.getElementById('optimizationMap'),{center:{lat:10.3157,lng:123.8854},zoom:12,mapId:'DEMO_MAP_ID'}); return _map; }
+    function renderMap(points){ const map = ensureMap(); const path = points.map(p=>({lat:p.lat,lng:p.lng})); if(_poly){_poly.setMap(null);} if(!path.length) return; _poly = new google.maps.Polyline({path, geodesic:true, strokeColor:'#22c55e', strokeOpacity:1.0, strokeWeight:4}); _poly.setMap(map); const bounds = new google.maps.LatLngBounds(); path.forEach(ll=>bounds.extend(ll)); map.fitBounds(bounds); }
+
+    // Events
+    document.getElementById('optimizeBtn').addEventListener('click', async ()=>{
+      const val = document.getElementById('routeSelect').value;
+      if(!val){ renderList([],0,'Please select a route option.'); return; }
+      if(val.startsWith('auto-')){ optimizeAuto(val); } else { optimizeBackend(val); }
+    });
+
+    // Init
+    populateRoutes();
+  </script>
+
+  <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}"></script>
+</body>
+</html>

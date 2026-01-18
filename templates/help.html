@@ -1,0 +1,334 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTrack Help Center</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+        .topbar {
+            background-color: #32a000; /* Dark green topbar */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 54px;
+            padding: 0 20px;
+        }
+        .topbar .icon-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            margin: 0 5px;
+            color: #fff;
+            padding: 0;
+            display: flex;
+            align-items: center;
+        }
+        .topbar .icon-btn svg {
+            width: 28px;
+            height: 28px;
+            fill: #fff;
+        }
+        .topbar .spacer {
+            flex-grow: 1;
+        }
+        .topbar .icon-btn.active {
+            background-color: #256b00;
+            border-radius: 5px;
+        }
+        .help-header {
+            background: linear-gradient(to right, #5dbb29, #32a000);
+            text-align: center;
+            padding: 60px 20px;
+            color: white;
+        }
+        .help-header h1 {
+            font-size: 2.5em;
+            margin: 0;
+            margin-bottom: 20px;
+        }
+        .search-container {
+            position: relative;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .search-container input {
+            width: 100%;
+            padding: 15px 20px 15px 50px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            font-size: 1.1em;
+            box-sizing: border-box;
+            background: #ffffff;
+            color: #111827;
+        }
+        .search-container input::placeholder { color: #6b7280; }
+        .search-container .search-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6b7280;
+        }
+        .main-content {
+            padding: 40px 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .topic-cards-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .topic-card {
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            transition: transform 0.2s;
+        }
+        .topic-card:hover {
+            transform: translateY(-5px);
+        }
+        .topic-icon {
+            width: 50px;
+            height: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #e0f7e9;
+            border-radius: 50%;
+        }
+        .topic-icon svg {
+            width: 30px;
+            height: 30px;
+            fill: #32a000;
+        }
+        .topic-text h3 {
+            margin: 0;
+            font-size: 1.2em;
+            color: #32a000;
+        }
+        .topic-text a {
+            color: #5dbb29;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .topic-text a:hover {
+            text-decoration: underline;
+        }
+        .common-topics-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .common-topic {
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s;
+        }
+        .common-topic:hover {
+            transform: translateY(-5px);
+        }
+        .common-topic h4 {
+            margin-top: 0;
+            font-size: 1.2em;
+            color: #32a000;
+        }
+        .common-topic p {
+            font-size: 0.9em;
+            color: #555;
+            line-height: 1.5;
+            min-height: 50px;
+        }
+        .common-topic a {
+            color: #5dbb29;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .common-topic a:hover {
+            text-decoration: underline;
+        }
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 280px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 1; right: 0; border-radius: 8px; top: 50px; font-family: Arial, sans-serif; }
+        .dropdown-content a { color: black; padding: 12px 16px; text-decoration: none; display: block; text-align: center; border-bottom: 1px solid #ddd; }
+        .dropdown-content a:hover { background-color: #f1f1f1; border-radius: 0 0 8px 8px; }
+        .dropdown-content .dropdown-item { display: flex; padding: 12px 16px; border-bottom: 1px solid #ddd; align-items: center; }
+        .dropdown-content .dropdown-item:last-child { border-bottom: none; }
+        .dropdown-content .icon { margin-right: 15px; color: #32a000; }
+        .dropdown-content .message h5 { margin: 0; font-size: 1em; color: #333; }
+        .dropdown-content .message p { margin: 0; font-size: 0.9em; color: #666; }
+        .dropdown-content .message .time { display: block; font-size: 0.8em; color: #999; margin-top: 4px; }
+        .dropdown-content.show { display: block; }
+    </style>
+</head>
+<body>
+{% include 'partials/topbar.html' with active_tab='help' %}
+    {% comment %}<div class="topbar">
+        <style>.topbar-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid #fff;display:inline-block}</style>
+        <button class="icon-btn" onclick="location.href='{% url 'profile' %}'" title="Profile">
+            {% if has_custom_avatar and user_profile %}
+                <img class="topbar-avatar" src="{{ user_profile.photo.url }}" alt="Profile Avatar" />
+            {% else %}
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.5-1.8 4.5-4.5S14.7 3 12 3 7.5 4.8 7.5 7.5 9.3 12 12 12zm0 2c-3 0-9 1.5-9 4.5V21h18v-2.5c0-3-6-4.5-9-4.5z"/></svg>
+            {% endif %}
+        </button>
+
+        <div class="spacer"></div>
+        
+        <button class="icon-btn" onclick="location.href='{% url 'dashboard' %}'" title="Home">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L2 12h3v8h6v-6h2v6h6v-8h3L12 2zm0 14h-2v-4h2v4zm4-4h-2v4h2v-4zm-8 4H6v-4h2v4z"/>
+            </svg>
+        </button>
+
+        <div class="dropdown">
+            <button class="icon-btn" onclick="toggleDropdown()" title="Notifications">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C10.34 2 9 3.34 9 5V5.29C6.61 6.16 5 8.42 5 11V17L3 19V20H21V19L19 17V11C19 8.42 17.39 6.16 15 5.29V5C15 3.34 13.66 2 12 2ZM12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22Z"/>
+                </svg>
+            </button>
+            <div id="notificationDropdown" class="dropdown-content">
+                <div class="dropdown-item">
+                    <div class="icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm10 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+                    </div>
+                    <div class="message">
+                        <h5>Collection Scheduled</h5>
+                        <p>A collection for Valdez is scheduled for today at 2 PM.</p>
+                        <span class="time">2 hours ago</span>
+                    </div>
+                </div>
+                <a href="{% url 'notification' %}">View all notifications</a>
+            </div>
+        </div>
+
+        <button class="icon-btn" onclick="location.href='{% url 'warning' %}'" title="Warning">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'track_trucks' %}'" title="Track Trucks">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm10 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn active" onclick="location.href='{% url 'help' %}'" title="Help">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0C5.37258 0 0 5.3726 0 12C0 18.6274 5.37258 24 12 24C18.6274 24 24 18.6274 24 12C24 5.3726 18.6274 0 12 0ZM13 18H11V16H13V18ZM14.071 11.071L13.171 11.971C12.6265 12.5155 12.25 13.0796 12.25 14H11V13.5C11 12.7035 11.3765 11.9225 11.929 11.37L13.243 10.057C13.4056 9.89443 13.5 9.67652 13.5 9.5C13.5 9.22386 13.2761 9 13 9H11C10.7239 9 10.5 9.22386 10.5 9.5V10H9V9.5C9 8.39543 9.89543 7.5 11 7.5H13C14.1046 7.5 15 8.39543 15 9.5C15 10.0148 14.8042 10.5074 14.464 10.879L14.071 11.071Z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'crud_management' %}'" title="CRUD Management">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zm0-8h14V7H7v2z"/>
+            </svg>
+        </button>
+        
+        <button class="icon-btn" onclick="location.href='{% url 'resident_verification' %}'" title="Resident Verification">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M22 10V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h4l-3.96 4.95a.5.5 0 0 0 .39.86H21.5a.5.5 0 0 0 .39-.86L18 12h4c1.1 0 2-.9 2-2zM4 6h16v4h-4.66a.5.5 0 0 0-.39.86L18 14.14V16h-4.34a.5.5 0 0 0-.39-.86L15.99 12.5H4V6zm16 8h-4.34a.5.5 0 0 0-.39.86L15.99 16.5H20v-2.5zm-8 4H4v2h8v-2z"/>
+            </svg>
+        </button>
+
+        <button class="icon-btn" onclick="location.href='{% url 'logout' %}'" title="Logout">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+            </svg>
+        </button>
+    </div>{% endcomment %}
+   
+
+    
+
+    <div class="help-header">
+        <h1>How can we help?</h1>
+        <div class="search-container">
+            <input type="text" placeholder="Search" aria-label="Search help topics">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+            </svg>
+        </div>
+    </div>
+
+    
+
+    <div class="main-content">
+        <div class="topic-cards-container">
+            <div class="topic-card">
+                <div class="topic-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zM11 7h2v2h-2zm0 4h2v6h-2z"/>
+                    </svg>
+                </div>
+                <div class="topic-text">
+                    <h3>GTrack Essentials</h3>
+                    <a href="#">See all ></a>
+                </div>
+            </div>
+            <div class="topic-card">
+                <div class="topic-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 14.59L15.59 18 12 14.41 8.41 18 7 16.59 10.59 13 7 9.41 8.41 8 12 11.59 15.59 8 17 9.41 13.41 13 17 16.59z"/>
+                    </svg>
+                </div>
+                <div class="topic-text">
+                    <h3>Good to know</h3>
+                    <a href="#">See all ></a>
+                </div>
+            </div>
+        </div>
+
+        <h2>Common Topics</h2>
+        <div class="common-topics-container">
+            <div class="common-topic">
+                <h4>Getting Started</h4>
+                <p>Learn how to quickly get the most out of GTrack, from login to tracking trucks and monitoring waste levels.</p>
+                <a href="#">See all 12 articles ></a>
+            </div>
+            <div class="common-topic">
+                <h4>Truck Tracking</h4>
+                <p>Get to know the basics of using the truck tracking map and understanding route schedules and live locations.</p>
+                <a href="#">See all 22 articles ></a>
+            </div>
+            <div class="common-topic">
+                <h4>Dashboard Overview</h4>
+                <p>Manage the different views on your dashboard, including waste level graphs and notification settings.</p>
+                <a href="#">See all 6 articles ></a>
+            </div>
+            <div class="common-topic">
+                <h4>GTrack Alerts</h4>
+                <p>Learn what's new, improved, or fixed in GTrack. Stay up-to-date with the latest features and bug fixes.</p>
+                <a href="#">See all 12 articles ></a>
+            </div>
+            <div class="common-topic">
+                <h4>FAQs</h4>
+                <p>Answers to the most commonly asked questions about GTrack, what can you do, and how it works.</p>
+                <a href="#">See all 6 articles ></a>
+            </div>
+            <div class="common-topic">
+                <h4>How To</h4>
+                <p>Here you can find various tips and tutorials on how to do things in GTrack, from setting up alerts to customizing your profile.</p>
+                <a href="#">See all 6 articles ></a>
+            </div>
+        </div>
+    </div>
+
+ 

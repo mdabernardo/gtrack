@@ -1,0 +1,169 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garbage Truck Verification</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+
+    <!-- Keeping Firebase compat scripts; connection details will be provided later -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <style>
+        /* Match resident verification font and base styling */
+        body { font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; }
+        .container { max-width: 720px; margin: 24px auto; padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; color: #32a000; }
+        .form-row { display: flex; gap: 16px; }
+        .form-row > div { flex: 1; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; }
+        input[type="text"], input[type="email"], input[type="tel"], input[type="number"], select, input[type="password"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #ffffff; /* override dark theme */
+            color: #111827;      /* readable text color */
+        }
+        select { background-color: #ffffff; color: #111827; }
+        input::placeholder { color: #9ca3af; }
+        input[type="file"] { width: 100%; }
+        /* Make file input light to match form */
+        input[type="file"] {
+            background: #ffffff;
+            color: #111827;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+        .actions { display: flex; gap: 12px; margin-top: 18px; }
+        .btn { padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-secondary { background: #6b7280; color: white; text-decoration: none; display: inline-flex; align-items: center; }
+        .note { color: #6b7280; font-size: 0.95rem; }
+        .danger { color: #e11d48; }
+        .success { color: #16a34a; }
+    </style>
+</head>
+<body>
+    {% include 'partials/topbar.html' with active_tab='driver_verification' %}
+    <div class="container">
+        <h1>Garbage Truck Verification</h1>
+        {% if messages %}
+            {% for message in messages %}
+                <p class="{% if message.tags %}{{ message.tags }}{% endif %}">{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <div class="form-row">
+                <div>
+                    <label for="full_name">Full Name</label>
+                    <input type="text" id="full_name" name="full_name" placeholder="e.g. Juan Dela Cruz" required />
+                </div>
+                <div>
+                    <label for="age">Age</label>
+                    <input type="number" id="age" name="age" min="18" max="80" required />
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div>
+                    <label for="sex">Sex</label>
+                    <select id="sex" name="sex" required>
+                        <option value="">Select</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="contact_number">Contact Number</label>
+                    <input type="tel" id="contact_number" name="contact_number" placeholder="e.g. +63 900 000 0000" required />
+                </div>
+            </div>
+
+            <div>
+                <label for="address">Address</label>
+                <input type="text" id="address" name="address" placeholder="Street, Barangay, City" required />
+            </div>
+
+            <div class="form-row">
+                <div>
+                    <label for="gmail_email">Driver Gmail</label>
+                    <input type="email" id="gmail_email" name="gmail_email" placeholder="driver@gmail.com" required />
+                </div>
+                <div>
+                    <label for="password">Account Password</label>
+                    <!-- Visible by default, with suggest + hide/show controls -->
+                    <input type="text" id="password" name="password" placeholder="Temporary password" required autocomplete="off" />
+                    <div class="actions" style="margin-top:8px; gap:8px;">
+                        <button type="button" class="btn btn-secondary" id="btnSuggest">Suggest strong password</button>
+                        <button type="button" class="btn btn-secondary" id="btnToggle">Hide password</button>
+                    </div>
+                    <p class="note" id="pwNote">Password is visible. Minimum for Firebase is 6 characters.</p>
+                </div>
+            </div>
+
+            <div>
+                <label for="valid_id">Upload Valid ID (image or PDF)</label>
+                <input type="file" id="valid_id" name="valid_id" accept="image/*,.pdf" required />
+                <p class="note">Accepted: JPG, PNG, or PDF. Max 10MB.</p>
+            </div>
+
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Create Driver Account</button>
+                <a href="{% url 'dashboard' %}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+        <p class="note" style="margin-top:12px;">Creates a Firebase Auth user and stores driver info in Firestore.</p>
+    </div>
+    <script>
+        (function() {
+            const input = document.getElementById('password');
+            const btnSuggest = document.getElementById('btnSuggest');
+            const btnToggle = document.getElementById('btnToggle');
+            const note = document.getElementById('pwNote');
+
+            function generateStrongPassword(length = 12) {
+                const lowers = 'abcdefghjkmnpqrstuvwxyz';
+                const uppers = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+                const digits = '23456789';
+                const symbols = '!@#$%^&*()-_=+';
+                const all = lowers + uppers + digits + symbols;
+                // Ensure at least one of each category
+                let pwd = '';
+                pwd += lowers[Math.floor(Math.random() * lowers.length)];
+                pwd += uppers[Math.floor(Math.random() * uppers.length)];
+                pwd += digits[Math.floor(Math.random() * digits.length)];
+                pwd += symbols[Math.floor(Math.random() * symbols.length)];
+                for (let i = pwd.length; i < length; i++) {
+                    pwd += all[Math.floor(Math.random() * all.length)];
+                }
+                // Simple shuffle
+                return pwd.split('').sort(() => Math.random() - 0.5).join('');
+            }
+
+            btnSuggest?.addEventListener('click', () => {
+                input.value = generateStrongPassword(12);
+            });
+
+            btnToggle?.addEventListener('click', () => {
+                if (input.type === 'text') {
+                    input.type = 'password';
+                    btnToggle.textContent = 'Show password';
+                    note.textContent = 'Password is hidden.';
+                } else {
+                    input.type = 'text';
+                    btnToggle.textContent = 'Hide password';
+                    note.textContent = 'Password is visible. Minimum for Firebase is 6 characters.';
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

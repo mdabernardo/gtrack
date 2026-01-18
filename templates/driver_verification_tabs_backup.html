@@ -1,0 +1,316 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garbage Truck Verification</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0; }
+
+        .main-content { padding: 40px 20px; display: flex; justify-content: center; align-items: flex-start; min-height: calc(100vh - 54px); }
+        .verification-container { display: flex; width: 100%; max-width: 900px; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); overflow: hidden; }
+
+        .status-tabs { display: flex; justify-content: space-around; border-bottom: 2px solid #e0e0e0; margin-bottom: 10px; padding: 0 20px; }
+        .status-tab { padding: 10px 15px; cursor: pointer; font-weight: bold; color: #888; border-bottom: 2px solid transparent; transition: color 0.2s, border-bottom-color 0.2s; }
+        .status-tab.active-tab { color: #32a000; border-bottom-color: #32a000; }
+
+        .pending-list { flex-basis: 35%; border-right: 1px solid #e0e0e0; padding: 20px 0 0 0; background-color: #fafafa; display: flex; flex-direction: column; overflow-y: auto; max-height: 700px; }
+        .pending-item { padding: 15px 20px; cursor: pointer; border-bottom: 1px solid #e0e0e0; transition: background-color 0.2s; }
+        .pending-item:hover { background-color: #f1f1f1; }
+        .pending-item.active { background-color: #e6f3e6; border-left: 4px solid #32a000; padding-left: 16px; }
+        .pending-item h4 { margin: 0; font-size: 1em; color: #444; }
+        .pending-item p { margin: 0; font-size: 0.8em; color: #888; }
+
+        .details-panel { flex-basis: 65%; padding: 30px; display: flex; flex-direction: column; }
+        .panel-header { font-size: 1.5em; font-weight: bold; color: #32a000; margin-bottom: 20px; }
+        .detail-item { margin-bottom: 20px; }
+        .detail-item strong { display: block; font-size: 0.9em; color: #666; margin-bottom: 5px; }
+        .detail-item p, .detail-item .input-box { font-size: 1em; color: #333; margin: 0; padding: 10px; border: 1px solid #ccc; border-radius: 8px; background-color: #f9f9f9; }
+        .detail-item .input-box { width: 100%; box-sizing: border-box; }
+
+        .id-picture-container { margin-bottom: 20px; text-align: center; }
+        .id-picture-container img { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); max-height: 250px; object-fit: contain; }
+        .id-picture-container p { margin-top: 10px; font-size: 0.9em; color: #666; }
+
+        .btn-group { margin-top: auto; display: flex; gap: 15px; position: relative; }
+        .btn-group.hidden { display: none; }
+        .btn { flex-grow: 1; padding: 12px; border: none; border-radius: 8px; font-size: 1em; font-weight: bold; cursor: pointer; color: #ffffff; transition: background-color 0.2s; }
+        .btn-verify { background-color: #5dbb29; }
+        .btn-verify:hover { background-color: #4a9e22; }
+        .btn-reject-container { position: relative; flex-grow: 1; }
+        .btn-reject { width: 100%; background-color: #d9534f; }
+        .btn-reject:hover { background-color: #c9302c; }
+        .rejection-dropdown { position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%); background-color: #ffffff; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 10; display: none; padding: 10px; margin-bottom: 10px; min-width: 250px; }
+        .rejection-dropdown select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .rejection-dropdown button { width: 100%; margin-top: 10px; padding: 8px; border: none; border-radius: 4px; background-color: #d9534f; color: #fff; font-weight: bold; cursor: pointer; }
+
+        #detailRejectionReason { color: #c9302c; font-weight: bold; border-left: 5px solid #d9534f; padding: 10px; background-color: #fdd; margin-top: 10px; }
+
+        @media (max-width: 768px) {
+            .verification-container { flex-direction: column; }
+            .pending-list, .details-panel { flex-basis: 100%; border-right: none; }
+            .pending-list { border-bottom: 1px solid #e0e0e0; }
+            .rejection-dropdown { left: 0; transform: none; width: 100%; bottom: 100%; }
+        }
+    </style>
+</head>
+<body>
+{% include 'partials/topbar.html' with active_tab='driver_verification' %}
+
+    <div class="main-content">
+        <div class="verification-container">
+            <div class="pending-list" id="pendingListContainer">
+                <div class="status-tabs">
+                    <div class="status-tab active-tab" data-status="Pending" onclick="changeStatusTab('Pending', this)">Pending</div>
+                    <div class="status-tab" data-status="Verified" onclick="changeStatusTab('Verified', this)">Verified</div>
+                    <div class="status-tab" data-status="Rejected" onclick="changeStatusTab('Rejected', this)">Rejected</div>
+                </div>
+                <div id="pendingListContent">
+                    <p id="loading-message" style="padding: 15px 20px;">Loading drivers...</p>
+                </div>
+            </div>
+
+            <div class="details-panel">
+                <div class="panel-header">Garbage Truck Verification</div>
+                <div id="no-driver-selected" style="text-align: center; padding: 50px;">
+                    <p>Select a driver from the list to view details.</p>
+                </div>
+
+                <div id="driver-details-content" style="display:none;">
+                    <div class="detail-item">
+                        <strong>Status:</strong>
+                        <p id="detailStatus"></p>
+                    </div>
+                    <div class="detail-item" id="rejectionReasonWrapper" style="display: none;">
+                        <strong>Rejection Reason:</strong>
+                        <p id="detailRejectionReason"></p>
+                    </div>
+                    <div class="detail-item">
+                        <strong>Full Name:</strong>
+                        <p id="detailFullName"></p>
+                    </div>
+                    <div class="detail-item">
+                        <strong>Contact Number:</strong>
+                        <p id="detailPhone"></p>
+                    </div>
+                    <div class="detail-item">
+                        <strong>Email:</strong>
+                        <p id="detailEmail"></p>
+                    </div>
+                    <div class="detail-item">
+                        <strong>Address:</strong>
+                        <p id="detailAddress"></p>
+                    </div>
+
+                    <div class="id-picture-container" id="idPictureWrapper" style="display:none;">
+                        <strong>ID Picture:</strong>
+                        <img id="detailIDPicture" src="" alt="Driver ID Picture">
+                        <p>Click the image to view a larger version (if implemented).</p>
+                    </div>
+
+                    <div class="btn-group" id="verificationButtons">
+                        <button class="btn btn-verify" onclick="verifyDriver()">Verify Driver</button>
+                        <div class="btn-reject-container">
+                            <button class="btn btn-reject" onclick="toggleRejectionDropdown(event)">Reject Driver</button>
+                            <div id="rejectionDropdown" class="rejection-dropdown">
+                                <select id="rejectionReason">
+                                    <option value="" disabled selected>Select a reason...</option>
+                                    <option value="Insufficient Info">Insufficient Info</option>
+                                    <option value="Invalid ID">Invalid ID</option>
+                                    <option value="Not Eligible">Not Eligible</option>
+                                </select>
+                                <button onclick="submitDriverRejection()">Submit Rejection</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let db;
+        let currentDriverId = null;
+        let allDriversCache = {}; // Cache for the current status
+        let currentStatus = 'Pending';
+
+        function setupFirebase() {
+            const firebaseConfig = {
+                apiKey: "{{ settings.FIREBASE_CLIENT_CONFIG.apiKey|default:'' }}" || "AIzaSyCwvnrLJRIS03UKI...",
+                authDomain: "{{ settings.FIREBASE_CLIENT_CONFIG.authDomain|default:'g-trackapp.firebaseapp.com' }}",
+                projectId: "{{ settings.FIREBASE_CLIENT_CONFIG.projectId|default:'g-trackapp' }}",
+                storageBucket: "{{ settings.FIREBASE_CLIENT_CONFIG.storageBucket|default:'g-trackapp.appspot.com' }}",
+                messagingSenderId: "{{ settings.FIREBASE_CLIENT_CONFIG.messagingSenderId|default:'172056621672' }}",
+                appId: "{{ settings.FIREBASE_CLIENT_CONFIG.appId|default:'YOUR_APP_ID' }}"
+            };
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+        }
+
+        function changeStatusTab(newStatus, element) {
+            if (currentStatus === newStatus) return;
+            currentStatus = newStatus;
+            document.querySelectorAll('.status-tab').forEach(tab => tab.classList.remove('active-tab'));
+            element.classList.add('active-tab');
+            document.getElementById('driver-details-content').style.display = 'none';
+            document.getElementById('no-driver-selected').style.display = 'block';
+            currentDriverId = null;
+            allDriversCache = {};
+            setupRealtimeListener();
+        }
+
+        function setupRealtimeListener() {
+            const listContentElement = document.getElementById('pendingListContent');
+            const noSelectionElement = document.getElementById('no-driver-selected');
+            const detailsContentElement = document.getElementById('driver-details-content');
+
+            listContentElement.innerHTML = `<p id="loading-message" style="padding: 15px 20px;">Loading ${currentStatus.toLowerCase()} drivers...</p>`;
+
+            // Fetch all drivers and filter by status on the client (case-insensitive)
+            db.collection('drivers').onSnapshot((snapshot) => {
+                listContentElement.innerHTML = '';
+                allDriversCache = {};
+
+                const targetStatus = currentStatus.toLowerCase();
+                const matchingDocs = [];
+
+                snapshot.forEach((doc) => {
+                    const d = doc.data() || {};
+                    const s = (d.status || '').toLowerCase();
+                    if (s === targetStatus) {
+                        allDriversCache[doc.id] = d;
+                        matchingDocs.push({ id: doc.id, data: d });
+                    }
+                });
+
+                if (matchingDocs.length === 0) {
+                    listContentElement.innerHTML = `<p style="padding: 15px 20px;">No drivers currently ${currentStatus.toLowerCase()}.</p>`;
+                    noSelectionElement.style.display = 'block';
+                    detailsContentElement.style.display = 'none';
+                    currentDriverId = null;
+                    return;
+                }
+
+                let firstId = matchingDocs[0].id;
+                matchingDocs.forEach(({ id, data }) => {
+                    const listItem = document.createElement('div');
+                    listItem.className = 'pending-item';
+                    listItem.setAttribute('data-id', id);
+                    listItem.setAttribute('onclick', `loadDriverDetails('${id}', this)`);
+                    listItem.innerHTML = `
+                        <h4>${data.fullName || 'Unnamed Driver'}</h4>
+                        <p>${data.address || ''}</p>
+                    `;
+                    listContentElement.appendChild(listItem);
+                });
+
+                if (firstId) {
+                    const firstItem = document.querySelector(`#pendingListContent .pending-item[data-id="${firstId}"]`);
+                    if (firstItem) loadDriverDetails(firstId, firstItem);
+                }
+            }, (error) => {
+                console.error('Firestore real-time listener failed:', error);
+                listContentElement.innerHTML = '<p style="padding: 15px 20px; color: red;">Error loading data. Check console and security rules.</p>';
+            });
+        }
+
+        function loadDriverDetails(driverId, element) {
+            document.querySelectorAll('#pendingListContent .pending-item').forEach(item => item.classList.remove('active'));
+            element.classList.add('active');
+            currentDriverId = driverId;
+
+            const data = allDriversCache[driverId] || {};
+            document.getElementById('no-driver-selected').style.display = 'none';
+            document.getElementById('driver-details-content').style.display = 'block';
+
+            const rejectionWrapper = document.getElementById('rejectionReasonWrapper');
+            const verificationButtons = document.getElementById('verificationButtons');
+            const normalized = (data.status || '').toLowerCase();
+            if (normalized === 'pending') {
+                verificationButtons.classList.remove('hidden');
+                rejectionWrapper.style.display = 'none';
+            } else {
+                verificationButtons.classList.add('hidden');
+                if (normalized === 'rejected') {
+                    rejectionWrapper.style.display = 'block';
+                    document.getElementById('detailRejectionReason').innerText = data.rejectionReason || 'No reason provided.';
+                } else {
+                    rejectionWrapper.style.display = 'none';
+                }
+            }
+
+            document.getElementById('detailStatus').innerText = (data.status || 'N/A').replace(/^\w/, c => c.toUpperCase());
+            document.getElementById('detailFullName').innerText = data.fullName || 'N/A';
+            document.getElementById('detailPhone').innerText = data.contactNumber || 'N/A';
+            document.getElementById('detailEmail').innerText = data.gmail || data.email || 'N/A';
+            document.getElementById('detailAddress').innerText = data.address || 'N/A';
+
+            const idWrapper = document.getElementById('idPictureWrapper');
+            const idPicture = document.getElementById('detailIDPicture');
+            const imgUrl = data.idUrl || data.idMediaUrl || '';
+            if (imgUrl) { idWrapper.style.display = 'block'; idPicture.src = imgUrl; }
+            else { idWrapper.style.display = 'none'; idPicture.src = ''; }
+        }
+
+        function toggleRejectionDropdown(event) {
+            event.stopPropagation();
+            const rejectionDropdown = document.getElementById('rejectionDropdown');
+            rejectionDropdown.style.display = rejectionDropdown.style.display === 'block' ? 'none' : 'block';
+        }
+
+        async function updateDriverStatus(status, reason = null) {
+            if (!currentDriverId) { alert('Please select a driver first.'); return; }
+            const driverRef = db.collection('drivers').doc(currentDriverId);
+            try {
+                await driverRef.update({
+                    status: status.toLowerCase(),
+                    rejectionReason: status.toLowerCase() === 'rejected' ? reason : firebase.firestore.FieldValue.delete()
+                });
+                alert(`Driver status updated to: ${status}. The list will refresh.`);
+                if (status.toLowerCase() === 'rejected') {
+                    document.getElementById('rejectionDropdown').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error updating driver status:', error);
+                alert('Failed to update status in Firebase. Check console for security rules and details.');
+            }
+        }
+
+        function verifyDriver() {
+            if (confirm(`Are you sure you want to VERIFY driver ${currentDriverId}?`)) {
+                updateDriverStatus('Verified');
+            }
+        }
+
+        function submitDriverRejection() {
+            const reason = document.getElementById('rejectionReason').value;
+            if (reason) {
+                if (confirm(`Are you sure you want to REJECT driver ${currentDriverId} for reason: ${reason}?`)) {
+                    updateDriverStatus('Rejected', reason);
+                    document.getElementById('rejectionReason').value = '';
+                }
+            } else {
+                alert('Please select a rejection reason before submitting.');
+            }
+        }
+
+        window.onload = function() {
+            setupFirebase();
+            setupRealtimeListener();
+        }
+
+        window.onclick = function(event) {
+            const rejectionDropdown = document.getElementById('rejectionDropdown');
+            if (rejectionDropdown.style.display === 'block' && !rejectionDropdown.contains(event.target) && !event.target.matches('.btn-reject')) {
+                rejectionDropdown.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

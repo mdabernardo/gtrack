@@ -1,0 +1,679 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Track Garbage Trucks{% endblock %}
+
+{% block head %}
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #f8f9fa;
+        margin: 0;
+        padding: 0;
+    }
+    .topbar {
+        background-color: #32a000;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        height: 54px;
+        padding: 0 20px;
+        color: #fff;
+    }
+    .icon-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        margin: 0 5px;
+        color: #fff;
+        padding: 0;
+        display: flex;
+        align-items: center;
+    }
+    .icon-btn svg { width: 28px; height: 28px; fill: #fff; }
+    .icon-btn.active { background-color: #256b00; border-radius: 5px; }
+    .spacer { flex-grow: 1; }
+    .dropdown { position: relative; display: inline-block; }
+    .dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 280px; box-shadow: 0px 8px 16px rgba(0,0,0,0.2); z-index: 1; right: 0; border-radius: 8px; top: 50px; font-family: Arial, sans-serif; }
+    .dropdown-content a { color: black; padding: 12px 16px; text-decoration: none; display: block; text-align: center; border-bottom: 1px solid #ddd; }
+    .dropdown-content a:hover { background-color: #f1f1f1; border-radius: 0 0 8px 8px; }
+    .dropdown-content .dropdown-item { display: flex; padding: 12px 16px; border-bottom: 1px solid #ddd; align-items: center; }
+    .dropdown-content .dropdown-item:last-child { border-bottom: none; }
+    .dropdown-content .icon { margin-right: 15px; color: #32a000; }
+    .dropdown-content .message h5 { margin: 0; font-size: 1em; color: #333; }
+    .dropdown-content .message p { margin: 0; font-size: 0.9em; color: #666; }
+    .dropdown-content .message .time { display: block; font-size: 0.8em; color: #999; margin-top: 4px; }
+    .dropdown-content.show { display: block; }
+
+    .main { padding: 20px; max-width: 1000px; margin: 0 auto; }
+    #map { height: 70vh; width: 100%; border-radius: 12px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); background: #fff; }
+    .status { margin-top: 10px; color: #333; }
+    /* Optimizer embed styles */
+    .optimizer-card{margin-top:18px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:16px}
+    .opt-row{display:flex;gap:16px;align-items:flex-start}
+    .opt-col{flex:1}
+    .opt-controls{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+    .opt-depot{display:flex;gap:8px;align-items:center}
+    .opt-depot input{width:110px}
+    .opt-filters{display:flex;gap:8px;align-items:center;margin:8px 0}
+    #optList{height:280px;overflow:auto;border:1px solid #eee;border-radius:8px;padding:8px}
+    #optimizerMap{height:280px;border:1px solid #eee;border-radius:8px}
+    .muted{color:#6b7280}
+    .pill{background:#e5f5e0;color:#256b00;border-radius:999px;padding:4px 8px;font-size:12px}
+</style>
+{% endblock %}
+
+{% block content %}
+{% include 'partials/topbar.html' with active_tab='track_trucks' %}
+{% comment %}<div class="topbar">
+    <style>.topbar-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid #fff;display:inline-block}</style>
+    <button class="icon-btn" onclick="location.href='{% url 'profile' %}'" title="Profile">
+        {% if has_custom_avatar and user_profile %}
+            <img class="topbar-avatar" src="{{ user_profile.photo.url }}" alt="Profile Avatar" />
+        {% else %}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.5-1.8 4.5-4.5S14.7 3 12 3 7.5 4.8 7.5 7.5 9.3 12 12 12zm0 2c-3 0-9 1.5-9 4.5V21h18v-2.5c0-3-6-4.5-9-4.5z"/></svg>
+        {% endif %}
+    </button>
+    <div class="spacer"></div>
+    <button class="icon-btn" onclick="location.href='{% url 'dashboard' %}'" title="Home">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L2 12h3v8h6v-6h2v6h6v-8h3L12 2zm0 14h-2v-4h2v4zm4-4h-2v4h2v-4zm-8 4H6v-4h2v4z"/></svg>
+    </button>
+    <div class="dropdown">
+        <button class="icon-btn" onclick="toggleDropdown()" title="Notifications">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C10.34 2 9 3.34 9 5V5.29C6.61 6.16 5 8.42 5 11V17L3 19V20H21V19L19 17V11C19 8.42 17.39 6.16 15 5.29V5C15 3.34 13.66 2 12 2ZM12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22Z"/></svg>
+        </button>
+        <div id="notificationDropdown" class="dropdown-content">
+            <div class="dropdown-item">
+                <div class="icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+                </div>
+                <div class="message">
+                    <h5>Collection Scheduled</h5>
+                    <p>A collection is scheduled for today.</p>
+                    <span class="time">recent</span>
+                </div>
+            </div>
+            <a href="{% url 'crud_management' %}">CRUD Management</a>
+            <a href="{% url 'notification' %}">View all notifications</a>
+        </div>
+    </div>
+    <button class="icon-btn" onclick="location.href='{% url 'garbage_level' %}'" title="Warning">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+    </button>
+    <button class="icon-btn active" onclick="location.href='{% url 'track_trucks' %}'" title="Track Trucks">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 8h-3V4H3v13h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1v-5l-3-4zm-5 5H5V6h10v7zm4 0h-2V9h.8L19 11.2V13zm-10 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+    </button>
+    <button class="icon-btn" onclick="location.href='{% url 'help' %}'" title="Help">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 0C5.37258 0 0 5.3726 0 12C0 18.6274 5.37258 24 12 24C18.6274 24 24 18.6274 24 12C24 5.3726 18.6274 0 12 0ZM13 18H11V16H13V18ZM14.071 11.071L13.171 11.971C12.6265 12.5155 12.25 13.0796 12.25 14H11V13.5C11 12.7035 11.3765 11.9225 11.929 11.37L13.243 10.057C13.4056 9.89443 13.5 9.67652 13.5 9.5C13.5 9.22386 13.2761 9 13 9H11C10.7239 9 10.5 9.22386 10.5 9.5V10H9V9.5C9 8.39543 9.89543 7.5 11 7.5H13C14.1046 7.5 15 8.39543 15 9.5C15 10.0148 14.8042 10.5074 14.464 10.879L14.071 11.071Z"/></svg>
+    </button>
+    <button class="icon-btn" onclick="location.href='{% url 'crud_management' %}'" title="CRUD Management">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zm0-8h14V7H7v2z"/></svg>
+    </button>
+    <button class="icon-btn" onclick="location.href='{% url 'resident_verification' %}'" title="Resident Verification">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 10V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h4l-3.96 4.95a.5.5 0 0 0 .39.86H21.5a.5.5 0 0 0 .39-.86L18 12h4c1.1 0 2-.9 2-2zM4 6h16v4h-4.66a.5.5 0 0 0-.39.86L18 14.14V16h-4.34a.5.5 0 0 0-.39-.86L15.99 12.5H4V6zm16 8h-4.34a.5.5 0 0 0-.39.86L15.99 16.5H20v-2.5zm-8 4H4v2h8v-2z"/></svg>
+    </button>
+    <button class="icon-btn" onclick="location.href='{% url 'logout' %}'" title="Logout">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+    </button>
+</div>{% endcomment %}
+
+<div class="main">
+    <h1 style="color:#32a000; margin-top:0;">Track Garbage Trucks</h1>
+    <div id="map"></div>
+    <div class="status" id="status">Initializing map and real-time tracking...</div>
+
+    <!-- Embedded AI Route Optimizer under the tracking map -->
+    <div class="optimizer-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-weight:700;font-size:18px;color:#0b2f11">AI Route Optimizer</div>
+            <div><span id="optTotalKm" class="pill">— km total</span></div>
+        </div>
+        <div class="opt-controls">
+            <select id="optRouteSelect">
+                <option value="">Select a route...</option>
+            </select>
+            <button id="optimizeBtn" class="btn btn-success">Optimize Route</button>
+            <span class="muted">Choose an existing route or auto option.</span>
+        </div>
+        <div class="opt-filters">
+            <label class="muted">Min level:</label>
+            <select id="optMinLevel">
+                <option value="any">All levels</option>
+                <option value="low">≥ Low</option>
+                <option value="medium" selected>≥ Medium</option>
+                <option value="high">≥ High</option>
+            </select>
+        </div>
+        <div class="opt-depot">
+            <label class="muted">Start at:</label>
+            <select id="optDepotSelect">
+                <option value="map_center" selected>Map center</option>
+                <option value="first_point">First optimized point</option>
+                <option value="custom">Custom (lat/lng)</option>
+            </select>
+            <input id="optDepotLat" type="text" placeholder="lat" style="display:none"/>
+            <input id="optDepotLng" type="text" placeholder="lng" style="display:none"/>
+        </div>
+        <div class="opt-row">
+            <div class="opt-col">
+                <div class="muted" style="margin:6px 0">Suggested Order</div>
+                <div id="optList">Pick a route and click Optimize.</div>
+            </div>
+            <div class="opt-col">
+                <div class="muted" style="margin:6px 0">Mini Map</div>
+                <div id="optimizerMap"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleDropdown() {
+            document.getElementById('notificationDropdown').classList.toggle('show');
+        }
+        window.onclick = function(event) {
+            if (!event.target.matches('.icon-btn') && !event.target.closest('.dropdown')) {
+                const dropdowns = document.getElementsByClassName('dropdown-content');
+                for (let i = 0; i < dropdowns.length; i++) {
+                    const openDropdown = dropdowns[i];
+                    if (openDropdown.classList.contains('show')) {
+                        openDropdown.classList.remove('show');
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Injected runtime config -->
+    <script>
+        window.__app_id = "{{ app_id }}";
+        window.__firebase_config = '{{ firebase_config_json|escapejs }}';
+        window.__initial_auth_token = '';
+    </script>
+
+    <!-- Load Google Maps with injected API key -->
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}"></script>
+
+    <script type="module">
+        const statusEl = document.getElementById('status');
+    
+        // Build an SVG truck icon as a data URL (larger for visibility)
+        function getTruckIcon(size = 28) {
+          const svg = `<?xml version="1.0" encoding="UTF-8"?>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+              <rect x="8" y="22" width="30" height="18" rx="3" fill="#32a000"/>
+              <rect x="38" y="26" width="14" height="14" rx="2" fill="#4caf50"/>
+              <rect x="44" y="24" width="6" height="6" rx="1" fill="#c8e6c9"/>
+              <circle cx="18" cy="42" r="5" fill="#263238"/>
+              <circle cx="47" cy="42" r="5" fill="#263238"/>
+              <circle cx="18" cy="42" r="2" fill="#90a4ae"/>
+              <circle cx="47" cy="42" r="2" fill="#90a4ae"/>
+            </svg>`;
+          return {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            scaledSize: new google.maps.Size(size, size),
+            anchor: new google.maps.Point(size / 2, size * 0.75),
+          };
+        }
+    
+        let map;
+        const markers = new Map(); // id -> google.maps.Marker
+        function getResponsiveSize(){
+            // Bigger icons for clearer visibility: mobile 28px, desktop 36px
+            return window.matchMedia('(max-width: 640px)').matches ? 28 : 36;
+        }
+        function initMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                // Start centered at Catmon, Malabon
+                center: { lat: 14.6591, lng: 120.9569 },
+                zoom: 12,
+            });
+            let currentSize = getResponsiveSize();
+            window.addEventListener('resize', () => {
+                const s = getResponsiveSize();
+                if (s !== currentSize) {
+                    currentSize = s;
+                    // update all markers icons responsively
+                    for (const m of markers.values()) m.setIcon(getTruckIcon(s));
+                }
+            });
+        }
+        initMap();
+        
+        function upsertMarker(id, lat, lng) {
+            const pos = { lat: parseFloat(lat), lng: parseFloat(lng) };
+            let marker = markers.get(id);
+            if (!marker) {
+                marker = new google.maps.Marker({
+                    position: pos,
+                    map,
+                    title: `Collector ${id}`,
+                    icon: getTruckIcon(getResponsiveSize()),
+                });
+                markers.set(id, marker);
+            } else {
+                marker.setPosition(pos);
+            }
+        }
+
+        try {
+            const firebaseConfig = JSON.parse(window.__firebase_config);
+            const appId = window.__app_id || firebaseConfig.projectId;
+            const firebaseCore = await import('https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js');
+            const firebaseAuth = await import('https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js');
+            const firebaseFirestore = await import('https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js');
+            const app = firebaseCore.initializeApp(firebaseConfig);
+            const auth = firebaseAuth.getAuth(app);
+            const db = firebaseFirestore.getFirestore(app);
+            try { await firebaseAuth.signInAnonymously(auth); } catch (e) { console.warn('Anonymous auth failed:', e); }
+            // Listen to the entire 'collectors' collection and show all trucks
+            const colRef = firebaseFirestore.collection(db, 'collectors');
+            firebaseFirestore.onSnapshot(colRef, (qs) => {
+                let count = 0;
+                const bounds = new google.maps.LatLngBounds();
+                qs.forEach((doc) => {
+                    const data = doc.data() || {};
+                    const lat = typeof data.latitude === 'string' ? parseFloat(data.latitude) : data.latitude;
+                    const lng = typeof data.longitude === 'string' ? parseFloat(data.longitude) : data.longitude;
+                    if (lat == null || lng == null) return;
+                    upsertMarker(doc.id, lat, lng);
+                    bounds.extend(new google.maps.LatLng(lat, lng));
+                    count++;
+                });
+                if (count > 0) {
+                    map.fitBounds(bounds);
+                    statusEl.textContent = `Tracking ${count} collectors`;
+                } else {
+                    statusEl.textContent = 'No collectors to track yet.';
+                }
+            }, (err) => {
+                console.warn('Collectors snapshot error', err);
+                statusEl.textContent = 'Unable to track collectors right now.';
+            });
+
+            // ===== AI Optimizer embed logic =====
+            const optRouteSel = document.getElementById('optRouteSelect');
+            const optListEl = document.getElementById('optList');
+            const optTotalEl = document.getElementById('optTotalKm');
+            const optDepotSel = document.getElementById('optDepotSelect');
+            const optDepotLat = document.getElementById('optDepotLat');
+            const optDepotLng = document.getElementById('optDepotLng');
+            const optMinLevelSel = document.getElementById('optMinLevel');
+
+            optDepotSel.addEventListener('change', () => {
+              const show = optDepotSel.value === 'custom';
+              optDepotLat.style.display = show ? 'inline-block' : 'none';
+              optDepotLng.style.display = show ? 'inline-block' : 'none';
+            });
+
+            async function populateRoutes(){
+              optRouteSel.innerHTML = '<option value="">Select a route...</option>';
+              try {
+                const res = await fetch('/api/routes/');
+                if(res.ok){
+                  const routes = await res.json();
+                  routes.forEach(r=>{
+                    const opt=document.createElement('option');
+                    opt.value = r.id;
+                    opt.textContent = r.name || (`Route #${r.id}`);
+                    optRouteSel.appendChild(opt);
+                  });
+                }
+              } catch(e){ console.warn('Failed to load routes', e); }
+              // Auto options
+              const og = document.createElement('optgroup');
+              og.label = 'Auto by Garbage Level';
+              [['auto-high','High garbage drop-offs'],['auto-medium','Medium garbage drop-offs'],['auto-low','Low garbage drop-offs']]
+                .forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;og.appendChild(o);});
+              optRouteSel.appendChild(og);
+            }
+
+            function normalizeName(obj, fallback){
+              const cands = [obj?.locationName, obj?.name, obj?.location, obj?.site, obj?.dropoffName, fallback];
+              return (cands.find(v=>typeof v==='string' && v.trim().length) || '').toLowerCase();
+            }
+            function getLatLng(obj){
+              const lat = obj?.lat ?? obj?.latitude ?? obj?.coords?.lat;
+              const lng = obj?.lng ?? obj?.longitude ?? obj?.coords?.lng;
+              return (lat!=null && lng!=null) ? {lat: parseFloat(lat), lng: parseFloat(lng)} : null;
+            }
+            function readLevel(g){
+              let lv = g?.level ?? g?.garbageLevel ?? g?.severity ?? g?.status;
+              if(lv==null) return null;
+              lv = lv.toString().toLowerCase();
+              if(lv==='3' || lv==='high' || lv.includes('high') || lv.includes('extreme')) return 'high';
+              if(lv==='2' || lv==='medium' || lv.includes('med')) return 'medium';
+              if(lv==='1' || lv==='low' || lv.includes('low')) return 'low';
+              return lv; // fallback
+            }
+            async function fetchGarbageAndDropoffs(){
+              const gRef = firebaseFirestore.collection(db,'garbagelevel');
+              const dRef = firebaseFirestore.collection(db,'dropofflocation');
+              const [gSnap, dSnap] = await Promise.all([
+                firebaseFirestore.getDocs(gRef),
+                firebaseFirestore.getDocs(dRef)
+              ]);
+              const dropMap = new Map();
+              dSnap.forEach(doc=>{ const d=doc.data(); const key = normalizeName(d, doc.id); if(key) dropMap.set(key, d); dropMap.set(doc.id.toLowerCase(), d); });
+              const items=[];
+              gSnap.forEach(doc=>{
+                const g=doc.data();
+                const level = readLevel(g);
+                if(level==null) return;
+                const gLL = getLatLng(g);
+                if(gLL){
+                  const name = g.locationName || g.name || doc.id;
+                  items.push({ name, lat:gLL.lat, lng:gLL.lng, level });
+                  return;
+                }
+                const key = normalizeName(g, doc.id);
+                const d = key ? dropMap.get(key) : null;
+                if(d){
+                  const dLL = getLatLng(d);
+                  if(dLL){ items.push({ name: d.name||key, lat:dLL.lat, lng:dLL.lng, level }); }
+                }
+              });
+              return items.filter(i=>Number.isFinite(i.lat) && Number.isFinite(i.lng));
+            }
+
+            function haversineKm(a,b){ const R=6371; const dLat=(b.lat-a.lat)*Math.PI/180; const dLng=(b.lng-a.lng)*Math.PI/180; const s1=Math.sin(dLat/2), s2=Math.sin(dLng/2); const q=s1*s1 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*s2*s2; const c=2*Math.atan2(Math.sqrt(q),Math.sqrt(1-q)); return R*c; }
+            function greedyNearest(points){ if(points.length<=1) return points.slice(); const unvisited=points.slice(); const route=[unvisited.shift()]; while(unvisited.length){ let bi=0,bd=Infinity; for(let i=0;i<unvisited.length;i++){ const d=haversineKm(route[route.length-1],unvisited[i]); if(d<bd){bd=d;bi=i;} } route.push(unvisited.splice(bi,1)[0]); } return route; }
+
+            function twoOpt(route){
+              if(route.length<4) return route;
+              let improved = true;
+              const dist = (a,b)=>haversineKm(a,b);
+              while(improved){
+                improved = false;
+                for(let i=1;i<route.length-2;i++){
+                  for(let k=i+1;k<route.length-1;k++){
+                    const A = route[i-1], B = route[i], C = route[k], D = route[k+1];
+                    const current = dist(A,B) + dist(C,D);
+                    const swapped = dist(A,C) + dist(B,D);
+                    if(swapped + 1e-9 < current){ // small epsilon
+                      // reverse segment i..k
+                      const seg = route.slice(i,k+1).reverse();
+                      route.splice(i, seg.length, ...seg);
+                      improved = true;
+                    }
+                  }
+                }
+              }
+              return route;
+            }
+
+            // level ranking helpers
+            function levelRank(s){
+              const v = (s||'').toString().toLowerCase();
+              if(v.includes('extreme')) return 4;
+              if(v.includes('high')) return 3;
+              if(v.includes('med')) return 2;
+              if(v.includes('low')) return 1;
+              return 0;
+            }
+            function minRankFromSel(){
+              const v = optMinLevelSel.value;
+              if(v==='high') return 3;
+              if(v==='medium') return 2;
+              if(v==='low') return 1;
+              return 0; // any
+            }
+
+            let optMap, optPoly;
+            const CATMON_URL = 'https://maps.app.goo.gl/cBs6SBAjcMHB8P2W8';
+            function tryParseLatLngFromUrl(u){
+              try{
+                const s = decodeURIComponent(u||'');
+                const at = s.match(/@([\-\d\.]+),([\-\d\.]+)/);
+                if(at) return {lat:parseFloat(at[1]), lng:parseFloat(at[2])};
+                const url = new URL(s);
+                const q = url.searchParams.get('q') || '';
+                const nums = q.match(/([\-\d\.]+),\s*([\-\d\.]+)/);
+                if(nums) return {lat:parseFloat(nums[1]), lng:parseFloat(nums[2])};
+              }catch(e){/* ignore */}
+              return null;
+            }
+            function geocodeCatmonAndCenter(mapInst){
+              const parsed = tryParseLatLngFromUrl(CATMON_URL);
+              if(parsed && Number.isFinite(parsed.lat) && Number.isFinite(parsed.lng)){
+                mapInst.setCenter(parsed);
+                return;
+              }
+              const geocoder = new google.maps.Geocoder();
+              geocoder.geocode({address:'Catmon, Malabon, Philippines'}, (results, status)=>{
+                if(status===google.maps.GeocoderStatus.OK && results && results[0]){
+                  mapInst.setCenter(results[0].geometry.location);
+                }
+              });
+            }
+            function ensureOptMap(){
+              if(optMap) return optMap;
+              // Initialize, then geocode Catmon for precise center
+              optMap = new google.maps.Map(
+                document.getElementById('optimizerMap'),
+                { center: { lat: 14.6591, lng: 120.9569 }, zoom: 14 }
+              );
+              geocodeCatmonAndCenter(optMap);
+              return optMap;
+            }
+            function renderOpt(points){
+              optListEl.innerHTML = points.map((p,i)=>`<div>${i+1}. ${p.name} — (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})</div>`).join('');
+              const map2 = ensureOptMap();
+              const path = points.map(p=>({lat:p.lat,lng:p.lng}));
+              if(optPoly){optPoly.setMap(null);} if(!path.length) return;
+              optPoly = new google.maps.Polyline({path, geodesic:true, strokeColor:'#22c55e', strokeOpacity:1.0, strokeWeight:4});
+              optPoly.setMap(map2);
+              const b = new google.maps.LatLngBounds(); path.forEach(ll=>b.extend(ll)); map2.fitBounds(b);
+            }
+
+            function getDepotLatLng(points){
+              const mode = optDepotSel.value;
+              if(mode==='first_point' && points.length){ return {lat: points[0].lat, lng: points[0].lng}; }
+              if(mode==='custom'){
+                const lat = parseFloat(optDepotLat.value);
+                const lng = parseFloat(optDepotLng.value);
+                if(Number.isFinite(lat) && Number.isFinite(lng)) return {lat,lng};
+              }
+              // default: use optimizer mini map center if available, else main map center
+              const m = ensureOptMap();
+              const cOpt = m && m.getCenter ? m.getCenter() : null;
+              if(cOpt){ return { lat: cOpt.lat(), lng: cOpt.lng() }; }
+              const cMain = map && map.getCenter ? map.getCenter() : { lat: 14.6591, lng: 120.9569 };
+              return { lat: cMain.lat(), lng: cMain.lng() };
+            }
+
+            async function renderDirections(points){
+              const origin = getDepotLatLng(points);
+              if(!points.length){ optTotalEl.textContent='0.00 km total'; if(optPoly) optPoly.setMap(null); return; }
+              const ds = new google.maps.DirectionsService();
+              const map2 = ensureOptMap();
+              if(optPoly){optPoly.setMap(null);} // clear
+              let totalMeters = 0;
+              let polylinePath = [];
+              let chunkStart = 0;
+              const MAX_WPTS = 23; // keep within Google waypoint limits
+              while(chunkStart < points.length){
+                const chunk = points.slice(chunkStart, Math.min(chunkStart + MAX_WPTS, points.length));
+                const originLL = chunkStart === 0 ? origin : { lat: points[chunkStart-1].lat, lng: points[chunkStart-1].lng };
+                const destinationLL = chunk[chunk.length-1];
+                const waypoints = chunk.slice(0, chunk.length-1).map(p=>({location: new google.maps.LatLng(p.lat,p.lng), stopover:true}));
+                const req = {
+                  origin: new google.maps.LatLng(originLL.lat, originLL.lng),
+                  destination: new google.maps.LatLng(destinationLL.lat, destinationLL.lng),
+                  waypoints,
+                  travelMode: google.maps.TravelMode.DRIVING,
+                  optimizeWaypoints: false,
+                };
+                const res = await new Promise((resolve,reject)=> ds.route(req,(r,st)=> st===google.maps.DirectionsStatus.OK?resolve(r):reject(st)) ).catch(()=>null);
+                if(!res){ break; }
+                res.routes[0].legs.forEach(leg=>{ totalMeters += leg.distance?.value || 0; });
+                const steps = res.routes[0].overview_path || [];
+                steps.forEach(ll=> polylinePath.push({lat: ll.lat(), lng: ll.lng()}));
+                chunkStart += chunk.length;
+              }
+              if(polylinePath.length){
+                optPoly = new google.maps.Polyline({path: polylinePath, geodesic:true, strokeColor:'#22c55e', strokeOpacity:1.0, strokeWeight:4});
+                optPoly.setMap(map2);
+                const b = new google.maps.LatLngBounds(); polylinePath.forEach(ll=>b.extend(new google.maps.LatLng(ll.lat,ll.lng))); map2.fitBounds(b);
+              }
+              optTotalEl.textContent = `${(totalMeters/1000).toFixed(2)} km total`;
+            }
+
+            // --- Drop-off only support ---
+            function readArea(obj){
+              const candidates = [obj.area, obj.zone, obj.barangay, obj.district, obj.city, obj.region, obj.areaName, obj.zoneName];
+              const val = candidates.find(v=> typeof v === 'string' && v.trim().length);
+              return (val||'').toString().trim();
+            }
+
+            async function fetchDropoffsOnly(){
+              try{
+                const db = firebase.firestore ? firebase.firestore() : (window.firestore || null);
+                if(!db) return [];
+                const snap = await db.collection('dropofflocation').get();
+                const pts = [];
+                snap.forEach(doc=>{
+                  const d = doc.data()||{};
+                  const ll = getLatLng(d);
+                  if(!ll) return;
+                  pts.push({
+                    id: doc.id,
+                    name: normalizeName(d.locationName||d.name||d.label||doc.id),
+                    lat: ll.lat,
+                    lng: ll.lng,
+                    area: readArea(d)
+                  });
+                });
+                return pts;
+              }catch(e){ console.warn('fetchDropoffsOnly error', e); return []; }
+            }
+
+            async function fetchGarbageLevels(){
+              try{
+                const db = firebase.firestore ? firebase.firestore() : (window.firestore || null);
+                if(!db) return [];
+                const snap = await db.collection('garbagelevel').get();
+                const list = [];
+                snap.forEach(doc=>{
+                  const d = doc.data()||{};
+                  const ll = getLatLng(d);
+                  const lvl = readLevel(d);
+                  list.push({
+                    id: doc.id,
+                    name: normalizeName(d.locationName||d.name||d.label||doc.id),
+                    lat: ll?.lat,
+                    lng: ll?.lng,
+                    level: lvl,
+                    rank: levelRank(lvl)
+                  });
+                });
+                return list;
+              }catch(e){ console.warn('fetchGarbageLevels error', e); return []; }
+            }
+
+            function attachLevelsToDropoffs(dropoffs, levels){
+              const byName = new Map();
+              levels.forEach(l=>{ const key = (l.name||'').toLowerCase(); if(key) byName.set(key, l); });
+              dropoffs.forEach(d=>{
+                const key = (d.name||'').toLowerCase();
+                let chosen = byName.get(key);
+                if(!chosen){
+                  // proximity match within 500m
+                  let best = null, bd = Infinity;
+                  levels.forEach(l=>{
+                    if(l.lat!=null && l.lng!=null){
+                      const dist = haversineKm({lat:d.lat,lng:d.lng},{lat:l.lat,lng:l.lng});
+                      if(dist < 0.5 && dist < bd){ bd = dist; best = l; }
+                    }
+                  });
+                  chosen = best;
+                }
+                if(chosen){ d.level = chosen.level; d.levelRank = chosen.rank; }
+              });
+              return dropoffs;
+            }
+
+            async function addDropoffAreaOptions(){
+              const pts = await fetchDropoffsOnly();
+              if(!pts.length) return;
+              // Insert group header-like options
+              const allOpt = document.createElement('option');
+              allOpt.value = 'auto-dropoffs-all';
+              allOpt.textContent = 'All drop-offs (auto)';
+              optRouteSel.appendChild(allOpt);
+              const areas = Array.from(new Set(pts.map(p=> (p.area||'').toLowerCase()).filter(Boolean)));
+              areas.sort();
+              areas.forEach(a=>{
+                const opt = document.createElement('option');
+                opt.value = 'auto-dropoffs-area:' + encodeURIComponent(a);
+                opt.textContent = `Drop-offs in ${a} (auto)`;
+                optRouteSel.appendChild(opt);
+              });
+            }
+
+            async function optimizeAuto(level){
+              // Support both garbage-level autos and drop-off area autos
+              if(level.startsWith('auto-dropoffs-')){
+                const pts = await fetchDropoffsOnly();
+                const levels = await fetchGarbageLevels();
+                let filtered = attachLevelsToDropoffs(pts, levels);
+                if(level.startsWith('auto-dropoffs-area:')){
+                  const area = decodeURIComponent(level.split(':')[1]||'').toLowerCase();
+                  filtered = filtered.filter(p=> (p.area||'').toLowerCase() === area);
+                }
+                // apply min level filter
+                const minRank = minRankFromSel();
+                if(minRank>0){ filtered = filtered.filter(p=> (p.levelRank||0) >= minRank); }
+                if(!filtered.length){ optListEl.innerHTML = '<div class="muted">No drop-offs match the selected area and level.</div>'; optTotalEl.textContent='0.00 km total'; if(optPoly){optPoly.setMap(null);} return; }
+                // prioritize higher levels first before distance ordering
+                filtered.sort((a,b)=> (b.levelRank||0) - (a.levelRank||0));
+                let ordered = greedyNearest(filtered);
+                ordered = twoOpt(ordered);
+                renderOpt(ordered);
+                await renderDirections(ordered);
+                return;
+              }
+              const all = await fetchGarbageAndDropoffs();
+              const target = level.replace('auto-','');
+              const choices = all.filter(x=>{
+                const lv = (x.level||'').toString().toLowerCase();
+                if(target==='medium') return lv==='medium' || lv.includes('med');
+                if(target==='high') return lv==='high' || lv.includes('high') || lv.includes('extreme');
+                if(target==='low') return lv==='low' || lv.includes('low');
+                return lv.includes(target);
+              });
+              if(!choices.length){ optListEl.innerHTML = '<div class="muted">No matching drop-offs.</div>'; optTotalEl.textContent='0.00 km total'; if(optPoly){optPoly.setMap(null);} return; }
+              let ordered = greedyNearest(choices);
+              ordered = twoOpt(ordered);
+              renderOpt(ordered);
+              await renderDirections(ordered);
+            }
+
+            async function optimizeBackend(id){
+              const res = await fetch(`/api/routes/${id}/optimize/`);
+              if(!res.ok){ optListEl.innerHTML = '<div class="muted">Failed to optimize via API.</div>'; optTotalEl.textContent='0.00 km total'; return; }
+              const data = await res.json();
+              const pts = (data.suggested_points||[]).map(p=>({name:p.name||p.label||p.id, lat:p.lat||p.latitude, lng:p.lng||p.longitude})).filter(p=>p.lat&&p.lng);
+              let ordered = pts;
+              ordered = twoOpt(ordered);
+              renderOpt(ordered);
+              await renderDirections(ordered);
+            }
+
+            // Populate drop-off area auto options after page load
+            addDropoffAreaOptions();
+
+            document.getElementById('optimizeBtn').addEventListener('click', ()=>{
+              const val = optRouteSel.value; if(!val){ optListEl.innerHTML = '<div class="muted">Please select a route option.</div>'; return; }
+              if(val.startsWith('auto-')) optimizeAuto(val); else optimizeBackend(val);
+            });
+            populateRoutes();
+            // Ensure mini map is initialized and refine both maps to precise Catmon center
+            ensureOptMap();
+            geocodeCatmonAndCenter(map);
+        } catch (err) {
+            console.error('Initialization error:', err);
+            statusEl.textContent = 'Failed to initialize Firebase.';
+        }
+    </script>
+</div>
+{% endblock %}

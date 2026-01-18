@@ -1,0 +1,30 @@
+Django==4.2.0
+djangorestframework==3.14.0
+django-cors-headers==4.1.0
+django-allauth==0.60.1
+
+firebase-admin==6.2.0
+
+# Explicitly pin grpcio to a version with Py311 wheels
+grpcio>=1.62.1
+
+# Use a NumPy version compatible with Python 3.12
+numpy==1.26.4
+pandas==2.1.4
+python-dateutil==2.8.2
+
+geopy==2.3.0
+
+# Load environment variables in settings
+python-dotenv==1.0.1
+
+# Required for ImageField in userprofile models
+Pillow==10.4.0
+
+# Use DATABASE_URL if provided (e.g., Render Postgres)
+dj-database-url==2.1.0
+psycopg2-binary==2.9.9
+
+# HTTP client for Firebase REST sign-in
+requests==2.32.3
+requests==2.32.3

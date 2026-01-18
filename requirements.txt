@@ -1,0 +1,8 @@
+# Aggregates project dependencies for Render builds
+# Keep Render's default build command working: pip install -r requirements.txt
+
+# Include the actual project requirements located in the nested folder
+-r g-track-main/requirements.txt
+
+# Ensure Gunicorn is available for the Start Command
+gunicorn

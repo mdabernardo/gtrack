@@ -1,0 +1,320 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Login</title>
+        <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+        <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f2f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .login-container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            width: 350px;
+        }
+
+        .login-container h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        /* Styles for Django messages */
+        .messages {
+            list-style-type: none;
+            padding: 0;
+            margin-bottom: 20px;
+        }
+
+        .messages .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        input[type="email"],
+        input[type="password"],
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+        }
+        .login-container label { display: block; margin-bottom: 8px; font-weight: 600; }
+        .help-text { display: block; margin-top: 4px; margin-bottom: 16px; color: #888; font-size: 0.9em; }
+
+        /* Password toggle */
+        .password-field { position: relative; }
+        .password-field input { padding-right: 40px; height: 44px; line-height: 44px; }
+        .toggle-password {
+            position: absolute;
+            right: 9px;
+            top: 41%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: grid;
+            place-items: center;
+            z-index: 2;
+        }
+        .toggle-password svg { width: 20px; height: 20px; fill: #666; }
+
+        .forgot-password {
+            display: block;
+            text-align: right;
+            margin-bottom: 20px;
+            font-size: 0.95em;
+            color: #4285f4;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .forgot-password:hover {
+            color: #357ae8;
+            text-decoration: underline;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #357ae8;
+        }
+
+        .or-separator {
+            text-align: center;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .or-separator::before,
+        .or-separator::after {
+            content: "";
+            height: 1px;
+            background: #ccc;
+            position: absolute;
+            top: 50%;
+            width: 40%;
+        }
+
+        .or-separator::before { left: 0; }
+        .or-separator::after { right: 0; }
+
+        .or-separator span {
+            background: #fff;
+            padding: 0 10px;
+            color: #888;
+        }
+
+        .google-btn {
+            background: white;
+            color: black;
+            border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .google-btn img { height: 20px; width: 20px; }
+
+        .errorlist { color: red; font-size: 0.9em; }
+    </style>
+    
+</head>
+<body>
+    <div class="login-container">
+        <h2>Login</h2>
+
+        {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+            <li class="{{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        <form method="POST" action="{% url 'login' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'dashboard' %}">
+
+            <label for="id_email">Email</label>
+            <input type="email" name="email" id="id_email" placeholder="Enter your email" required autocomplete="email">
+
+            <label for="id_password">Password</label>
+            <div class="password-field">
+                <input type="password" name="password" id="id_password" placeholder="Enter your password" required autocomplete="current-password">
+                <button type="button" id="toggle_password" class="toggle-password" aria-label="Show password" title="Show password">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M12 5c-7.633 0-11 7-11 7s3.367 7 11 7 11-7 11-7-3.367-7-11-7zm0 12c-2.761 0-5-2.239-5-5s2.239-5 5-5 5 2.239 5 5-2.239 5-5 5zm0-8a3 3 0 100 6 3 3 0 000-6z"/>
+                    </svg>
+                </button>
+            </div>
+            
+            
+
+            <button type="submit">Login</button>
+        </form>
+
+        <div class="or-separator"><span>OR</span></div>
+
+        <button type="button" class="google-btn" id="google_login_btn">
+            <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg" alt="Google logo">
+            Login with Google (Admin Gmail only)
+        </button>
+
+        {% if admin_login_enabled %}
+          <div class="help-text" style="text-align:center;margin-top:8px">
+            Admin logins only. Allowed: 
+            {% for email in admin_allowed_emails %}
+              {{ email }}{% if not forloop.last %}, {% endif %}
+            {% empty %}
+              (no admin emails configured)
+            {% endfor %}
+          </div>
+        {% endif %}
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        var pwd = document.getElementById('id_password');
+        var toggle = document.getElementById('toggle_password');
+        if (pwd && toggle) {
+          toggle.addEventListener('click', function () {
+            var showing = pwd.type === 'text';
+            pwd.type = showing ? 'password' : 'text';
+            toggle.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+            toggle.setAttribute('title', showing ? 'Show password' : 'Hide password');
+          });
+        }
+
+        // CSRF debug: compare form token and cookie token in console
+        var formTokenEl = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        var formToken = formTokenEl ? formTokenEl.value : null;
+        var cookieMatch = document.cookie.match(/csrftoken=([^;]+)/);
+        var cookieToken = cookieMatch ? cookieMatch[1] : null;
+        console.log('[CSRF DEBUG] tokens', { formToken: formToken, cookieToken: cookieToken });
+
+        // Firebase Google login
+        const firebaseConfig = {{ firebase_config_json|safe }};
+
+        function initFirebase() {
+          if (window.firebase && firebase.apps && firebase.apps.length) return;
+          if (window.firebase) {
+            firebase.initializeApp(firebaseConfig);
+          }
+        }
+
+        function getCookie(name) {
+          const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+          if (match) return match[2];
+          return null;
+        }
+
+        // Single-flight guard and fallback to redirect when popups conflict
+        let isSigningIn = false;
+
+        async function completeServerLogin(user) {
+          const idToken = await user.getIdToken();
+          const csrfToken = getCookie('csrftoken');
+          const resp = await fetch('/api/auth/firebase_login/', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': csrfToken || ''
+            },
+            body: JSON.stringify({ idToken })
+          });
+          const data = await resp.json();
+          if (!resp.ok || data.status !== 'ok') {
+            const msg = (data && data.message) ? data.message : 'Login failed';
+            alert('Google login error: ' + msg);
+            return;
+          }
+          window.location.href = '/dashboard/';
+        }
+
+        // Handle redirect result if we previously fell back to signInWithRedirect
+        async function handleRedirectResult() {
+          try {
+            initFirebase();
+            const result = await firebase.auth().getRedirectResult();
+            if (result && result.user) {
+              await completeServerLogin(result.user);
+            }
+          } catch (e) {
+            console.warn('Google redirect handling failed:', e);
+          }
+        }
+
+        async function loginWithGoogle(googleBtn) {
+          if (isSigningIn) return; // prevent conflicting popups
+          isSigningIn = true;
+          if (googleBtn) googleBtn.disabled = true;
+          try {
+            initFirebase();
+            const provider = new firebase.auth.GoogleAuthProvider();
+            const result = await firebase.auth().signInWithPopup(provider);
+            const user = result.user;
+            await completeServerLogin(user);
+          } catch (e) {
+            const code = e && e.code ? String(e.code) : '';
+            // Fallback to redirect for environments that block or cancel popups
+            if (code.includes('popup') || code === 'auth/cancelled-popup-request') {
+              try {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                await firebase.auth().signInWithRedirect(provider);
+                // The page will reload; result handled by handleRedirectResult()
+                return;
+              } catch (redirectErr) {
+                alert('Google login failed (redirect): ' + (redirectErr && redirectErr.message ? redirectErr.message : redirectErr));
+              }
+            } else {
+              alert('Google login failed: ' + (e && e.message ? e.message : e));
+            }
+          } finally {
+            isSigningIn = false;
+            if (googleBtn) googleBtn.disabled = false;
+          }
+        }
+
+        // Attempt to process any redirect result first
+        handleRedirectResult();
+
+        const googleBtn = document.getElementById('google_login_btn');
+        if (googleBtn) {
+          googleBtn.addEventListener('click', function () { loginWithGoogle(googleBtn); });
+        }
+      });
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+</body>
+</html>
