@@ -73,6 +73,7 @@ urlpatterns = [
     path('api/generate-verification-notifications/', views.generate_verification_notifications, name='generate_verification_notifications'),
     path('api/sync-predictions/', views.sync_predictions_to_firebase, name='sync_predictions'),
     path('api/routes/recompute_all/', views.recompute_all_routes, name='recompute_all_routes'),
+    path('api/check-road-reports/', views.check_road_reports, name='check_road_reports'),
 
     # You can likely remove or comment out this line as you're now using custom views
     

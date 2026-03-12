@@ -1,0 +1,9 @@
+Script started.
+Firebase Admin SDK initialized successfully.
+Syncing to Firestore...
+Sync success: True
+Checking document: 999_20260211
+Verified! Document found in 'reroutr'.
+Data keys: ['suggested_points', 'data_string', 'updated_at', 'route_id', 'route_name', 'date', 'generated_at', 'factors']
+Confirmed 'data_string' field exists.
+Script finished.

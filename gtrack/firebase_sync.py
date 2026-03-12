@@ -2,6 +2,7 @@
 from typing import Optional, Sequence, Dict, Any
 from datetime import date as date_type
 from django.conf import settings
+import json
 
 try:
     import firebase_admin
@@ -212,6 +213,23 @@ def sync_optimization_to_firestore(
         doc_ref = db.collection('route_suggestion').document(doc_id)
         doc_ref.set(payload, merge=True)
 
+        # New 'reroutr' collection sync (as requested)
+        try:
+            reroutr_ref = db.collection('reroutr').document(doc_id)
+            
+            # Create a JSON string representation of the data
+            # Remove firestore sentinels for JSON serialization
+            safe_payload = payload.copy()
+            if 'updated_at' in safe_payload:
+                del safe_payload['updated_at']
+            
+            reroutr_payload = payload.copy()
+            reroutr_payload['data_string'] = json.dumps(safe_payload, default=str)
+            
+            reroutr_ref.set(reroutr_payload, merge=True)
+        except Exception as e:
+            print(f"Error syncing to reroutr: {e}")
+
         return True
     except Exception:
         return False
@@ -282,3 +300,106 @@ def fetch_garbagelevel_items() -> list:
         return items
     except Exception:
         return []
+
+
+def fetch_road_reports(only_new: bool = False) -> list:
+    """
+    Fetch road reports from Firestore.
+    Prefers collection 'road_reports' (plural), falls back to 'road_report' (singular).
+    
+    Args:
+        only_new (bool): If True, filters for reports with status='new' (or missing status).
+        
+    Returns:
+        list of dicts: {id, location, description, timestamp, status, __collection__, ...}
+    """
+    db = _get_firestore_client()
+    if db is None:
+        return []
+
+    def _collect(col_name: str) -> list:
+        try:
+            col = db.collection(col_name)
+            docs = col.get()
+        except Exception:
+            return []
+        items = []
+        for d in docs:
+            data = d.to_dict() if hasattr(d, "to_dict") else getattr(d, "_data", {}) or {}
+            if not isinstance(data, dict):
+                continue
+            status = data.get('status', 'new')
+            if only_new and status == 'processed':
+                continue
+            data['id'] = d.id
+            data['__collection__'] = col_name
+            items.append(data)
+        return items
+
+    # Prefer the pluralized collection where real app data is stored
+    items = _collect('road_reports')
+    if not items:
+        # Backwards compatibility with older 'road_report' collection
+        items = _collect('road_report')
+    return items
+
+
+def mark_road_report_processed(report_id: str, collection: Optional[str] = None):
+    """Mark a road report as processed in Firestore."""
+    db = _get_firestore_client()
+    if db is None:
+        return False
+    try:
+        targets = [collection] if collection else ['road_reports', 'road_report']
+        updated = False
+        for col_name in targets:
+            if not col_name:
+                continue
+            try:
+                db.collection(col_name).document(report_id).update({
+                    'status': 'processed',
+                    'processed_at': firestore.SERVER_TIMESTAMP
+                })
+                updated = True
+                # Do not break; try to keep both collections in sync if they both exist
+            except Exception:
+                continue
+        return updated
+    except Exception:
+        return False
+
+
+def create_firestore_notification(
+    title: str,
+    body: str,
+    target: str,
+    route_id: Optional[int] = None,
+    disruption_type: str = "road_report",
+    location_name: Optional[str] = None,
+) -> bool:
+    """
+    Create a notification document in Firestore 'notifications' collection so
+    mobile clients can display it (mirrors existing mobile-driven schema).
+    """
+    db = _get_firestore_client()
+    if db is None:
+        return False
+    try:
+        payload: Dict[str, Any] = {
+            "title": title,
+            "body": body,
+            "target": target,
+            "route_id": route_id,
+            "isRead": False,
+            "read": False,
+            "timestamp": firestore.SERVER_TIMESTAMP if firestore else None,
+            "data": {
+                "disruption_type": disruption_type,
+            },
+        }
+        if location_name:
+            payload["data"]["location_name"] = location_name
+        db.collection("notifications").add(payload)
+        return True
+    except Exception:
+        return False

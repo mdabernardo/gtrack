@@ -42,7 +42,13 @@ from .serializers import (
     AIRoutePredictionSerializer, NotificationSerializer
 )
 from .ai_predictor import GarbageRoutePredictor
-from .firebase_sync import sync_prediction_to_firestore, sync_scheduling_assistance_to_firestore
+from .firebase_sync import (
+    sync_prediction_to_firestore, 
+    sync_scheduling_assistance_to_firestore,
+    fetch_road_reports,
+    mark_road_report_processed,
+    create_firestore_notification,
+)
 
 # Safe import for optional Firebase notification manager
 try:
@@ -708,10 +714,125 @@ def firebase_login(request):
     except Exception as e:
         return Response({'status': 'error', 'message': str(e)}, status=400)
 
-    context = {
-        'firebase_config_json': json.dumps(settings.FIREBASE_CLIENT_CONFIG)
-    }
-    return render(request, 'login.html', context)
+
+@api_view(['POST', 'GET'])
+def check_road_reports(request):
+    """
+    Checks for new road reports, sends notifications, and triggers rerouting.
+    """
+    reports = fetch_road_reports(only_new=True)
+    if not reports:
+        return Response({'status': 'no_new_reports'})
+    
+    processed_count = 0
+    notifications_sent = 0
+    
+    # Process each report
+    for report in reports:
+        loc_name = report.get('location', 'Unknown Location')
+        desc = report.get('description', 'Road issue reported')
+        report_id = report.get('id')
+        report_collection = report.get('__collection__')
+        
+        title = f"Road Alert: {loc_name}"
+        body = f"Issue reported at {loc_name}: {desc}. Rerouting in progress."
+        
+        # 1. Create Web Notifications for all residents with notifications enabled
+        residents = Resident.objects.filter(notification_enabled=True)
+        for res in residents:
+            Notification.objects.create(
+                user=res.user,
+                type='delay',
+                title=title,
+                message=body
+            )
+            
+            # 2. Send Mobile Notification (FCM)
+            if res.fcm_token and firebase_manager:
+                try:
+                    firebase_manager.send_push_notification(
+                        token=res.fcm_token,
+                        title=title,
+                        body=body,
+                        data={'type': 'road_report', 'location': loc_name}
+                    )
+                except Exception:
+                    pass
+        
+        # 3. Notify Drivers (Garbage Collectors)
+        collectors = GarbageCollector.objects.all()
+        for collector in collectors:
+            # Web Notification
+            Notification.objects.create(
+                user=collector.user,
+                type='delay',
+                title=title,
+                message=body
+            )
+            
+            # Mobile Notification (FCM) - Try to fetch token from Firestore
+            if firebase_manager and firestore:
+                try:
+                    db = firestore.client()
+                    # Assuming username is the UID
+                    doc_ref = db.collection('collectors').document(collector.user.username)
+                    doc = doc_ref.get()
+                    if doc.exists:
+                        data = doc.to_dict()
+                        token = data.get('fcmToken') or data.get('fcm_token')
+                        if token:
+                            firebase_manager.send_push_notification(
+                                token=token,
+                                title=title,
+                                body=body,
+                                data={'type': 'road_report', 'location': loc_name}
+                            )
+                except Exception as e:
+                    print(f"Error notifying driver {collector}: {e}")
+        
+        notifications_sent += residents.count() + collectors.count()
+
+        # 4. Mirror notification to Firestore 'notifications' collection
+        create_firestore_notification(
+            title=title,
+            body=body,
+            target="residents",
+            route_id=None,
+            disruption_type="road_report",
+            location_name=loc_name,
+        )
+        create_firestore_notification(
+            title=title,
+            body=body,
+            target="collectors",
+            route_id=None,
+            disruption_type="road_report",
+            location_name=loc_name,
+        )
+        
+        # Mark as processed in the originating collection
+        if report_id:
+            mark_road_report_processed(report_id, report_collection)
+        processed_count += 1
+
+    # 3. Trigger Reroute for all routes
+    routes = Route.objects.all()
+    optimized_routes = []
+    for route in routes:
+        try:
+            res = ai_predictor.optimize_route_by_garbage_level(route.id)
+            optimized_routes.append(res.get('route_name'))
+        except Exception:
+            pass
+
+    return Response({
+        'status': 'processed',
+        'reports_count': processed_count,
+        'notifications_sent': notifications_sent,
+        'rerouted_routes': optimized_routes
+    })
+
+
 
 
 def signup_view(request):

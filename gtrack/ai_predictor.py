@@ -4,7 +4,12 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from django.conf import settings
 from .models import CollectionHistory, Route, AIRoutePrediction
-from .firebase_sync import sync_prediction_to_firestore, fetch_garbagelevel_items, sync_optimization_to_firestore
+from .firebase_sync import (
+    sync_prediction_to_firestore, 
+    fetch_garbagelevel_items, 
+    sync_optimization_to_firestore,
+    fetch_road_reports
+)
 
 # Try optional TensorFlow predictor
 try:
@@ -218,13 +223,14 @@ class GarbageRoutePredictor:
         # Fetch garbage level items from Firestore
         items = fetch_garbagelevel_items() or []
         
-        # Mapping for string levels
-        LEVEL_MAP = {
-            'high': 3.0,
-            'medium': 2.0,
-            'low': 1.0,
-            'critical': 4.0
-        }
+        # Fetch road reports (e.g. obstructions, traffic)
+        reports = fetch_road_reports() or []
+        report_map = {}
+        for r in reports:
+            # Assume 'location' field contains the name
+            r_loc = str(r.get('location') or '').strip().lower()
+            if r_loc:
+                report_map[r_loc] = r
 
         # Build a simple name->level map (case-insensitive)
         name_to_level = {}
@@ -233,17 +239,10 @@ class GarbageRoutePredictor:
             level = it.get('garbageLevel')
             if level is None:
                 level = it.get('garbage_level') or it.get('level')
-            
-            level_val = None
-            if level is not None:
-                # Try explicit float first
-                try:
-                    level_val = float(level)
-                except Exception:
-                    # Try string mapping
-                    level_str = str(level).strip().lower()
-                    level_val = LEVEL_MAP.get(level_str)
-
+            try:
+                level_val = float(level) if level is not None else None
+            except Exception:
+                level_val = None
             if loc_name and level_val is not None:
                 name_to_level[loc_name] = level_val
 
@@ -253,10 +252,17 @@ class GarbageRoutePredictor:
         for p in points:
             loc = p.location
             key = (loc.name or '').strip().lower()
+            
+            # Garbage level score
             level_val = name_to_level.get(key)
             if level_val is not None:
                 matched_count += 1
             score = float(level_val) if level_val is not None else 0.0
+            
+            # Road report check
+            report = report_map.get(key)
+            has_issue = report is not None
+            
             suggested.append({
                 'point_id': p.id,
                 'location_id': loc.id,
@@ -265,12 +271,15 @@ class GarbageRoutePredictor:
                 'longitude': loc.longitude,
                 'original_order': p.order,
                 'score': score,
+                'has_issue': has_issue,
+                'issue_details': report.get('description', 'Reported issue') if report else None
             })
 
         # Heuristic: weighted nearest neighbor
         # - Start from highest score point (or first by original order)
         # - At each step, choose next point with minimal effective_cost = distance_km / (1 + alpha*score)
-        # - alpha controls priority influence; alpha=5.0 gives STRONG bias to high garbage levels
+        # - alpha controls priority influence; alpha=1.0 gives meaningful bias
+        # - Road reports introduce a penalty multiplier to distance (making it "further" effectively)
         def haversine_km(lat1, lon1, lat2, lon2):
             from math import radians, sin, cos, asin, sqrt
             R = 6371.0
@@ -280,14 +289,22 @@ class GarbageRoutePredictor:
             c = 2 * asin(sqrt(a))
             return R * c
 
-        alpha = 5.0
+        alpha = 1.0
+        issue_penalty = 10.0 # significant penalty for reported locations
+        
         remaining = suggested[:]
         optimized = []
-        # pick start
+        # pick start - prefer points WITHOUT issues
         if items:
-            start = max(remaining, key=lambda x: x['score'])
+            # Filter out issues for start node if possible
+            safe_candidates = [x for x in remaining if not x['has_issue']]
+            if safe_candidates:
+                start = max(safe_candidates, key=lambda x: x['score'])
+            else:
+                start = max(remaining, key=lambda x: x['score'])
         else:
             start = min(remaining, key=lambda x: x['original_order'])
+            
         optimized.append(start)
         remaining.remove(start)
         total_distance_km = 0.0
@@ -297,7 +314,13 @@ class GarbageRoutePredictor:
             best, best_cost, best_dist = None, None, None
             for cand in remaining:
                 dist = haversine_km(curr['latitude'], curr['longitude'], cand['latitude'], cand['longitude'])
-                cost = dist / (1.0 + alpha * float(cand.get('score', 0.0)))
+                
+                # Apply penalty if candidate has road issue
+                penalty = issue_penalty if cand['has_issue'] else 1.0
+                
+                # effective cost
+                cost = (dist * penalty) / (1.0 + alpha * float(cand.get('score', 0.0)))
+                
                 if best_cost is None or cost < best_cost:
                     best, best_cost, best_dist = cand, cost, dist
             optimized.append(best)
@@ -313,11 +336,13 @@ class GarbageRoutePredictor:
             'route_name': route.name,
             'suggested_points': optimized,
             'factors': {
-                'source': 'firestore.garbagelevel',
+                'source': 'firestore.garbagelevel + road_report',
                 'items_count': len(items),
+                'reports_count': len(reports),
                 'matched_points': matched_count,
                 'alpha': alpha,
-                'heuristic': 'weighted_nearest_neighbor',
+                'issue_penalty': issue_penalty,
+                'heuristic': 'weighted_nearest_neighbor_with_penalties',
                 'total_distance_km': round(total_distance_km, 3),
             },
             'generated_at': datetime.utcnow().isoformat()

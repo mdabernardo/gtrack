@@ -1,0 +1,7 @@
+Calling check_road_reports...
+Response: {'status': 'processed', 'reports_count': 1, 'notifications_sent': 3, 'rerouted_routes': ['Test Route']}
+SUCCESS: Driver notification created: Road Alert: Test Location
+SUCCESS: Resident notification created: Road Alert: Test Location
+SUCCESS: Firestore 'collectors' collection queried for driver token
+Push notifications sent: 2
+SUCCESS: Push notification sent to driver token
