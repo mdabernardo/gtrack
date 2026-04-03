@@ -63,22 +63,107 @@
 
         /* Main content and dashboard cards */
         .main {
-            padding: 40px 20px;
-            max-width: 1000px;
-            margin: 0 auto;
+            padding: 0;
+            max-width: none;
+            margin: 0;
         }
-        .dashboard-cards {
+        .dash-main {
+            padding: 18px 18px 30px;
+            box-sizing: border-box;
+        }
+        @media (max-width: 980px) {
+            .dash-main { padding: 14px 14px 26px; }
+        }
+        .dash-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 16px;
+            margin-bottom: 14px;
+        }
+        .dash-title {
+            margin: 0;
+            font-size: 1.6em;
+            font-weight: 900;
+            color: #1f4f0c;
+        }
+        .dash-subtitle {
+            margin: 4px 0 0;
+            color: #6b7280;
+            font-weight: 600;
+        }
+        .dash-quick {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .dash-quick a {
+            background: #5dbb29;
+            color: #fff;
+            padding: 10px 12px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 900;
+            font-size: 0.95em;
+        }
+        .dash-quick a:hover { background: #4a9e22; }
+
+        .dash-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-            margin-bottom: 40px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+            align-items: start;
         }
+        @media (max-width: 1000px) {
+            .dash-grid { grid-template-columns: 1fr; }
+        }
+        .dash-card {
+            background: #fff;
+            border: 1px solid #eef2f7;
+            border-radius: 14px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+            overflow: hidden;
+        }
+        .dash-card-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 16px;
+            border-bottom: 1px solid #eef2f7;
+        }
+        .dash-card-title {
+            font-weight: 900;
+            color: #111827;
+            font-size: 1.05em;
+            margin: 0;
+        }
+        .dash-card-action {
+            background: #5dbb29;
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            padding: 8px 10px;
+            font-weight: 900;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+        .dash-card-action:hover { background: #4a9e22; }
+        .dash-card-body { padding: 14px 16px; }
+
+        .span-2 { grid-column: 1 / -1; }
         /* Stats grid */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 16px;
-            margin: 10px 0 30px;
+            margin: 12px 0 18px;
         }
         .stat-card {
             background-color: #fff;
@@ -93,102 +178,184 @@
         .stat-icon { font-size: 22px; }
         .stat-value { font-size: 24px; font-weight: 700; color: #1f4f0c; }
         .stat-label { font-size: 12px; color: #7f8c8d; }
-        .dashboard-card, .schedules-card {
-            background-color: #fff;
-            padding: 25px;
+        #dashboardGarbageOverview {
+            background: #d1ffd0;
             border-radius: 12px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            padding: 14px 14px;
         }
-        .dashboard-card:hover, .schedules-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-        }
-        
-        /* Card-specific styling */
-        .dashboard-card .card-visual {
+        #dashboardGarbageOverview .dga-toplabel { font-size: 13px; }
+        #dashboardGarbageOverview .dga-topvalue { font-size: 13px; max-width: 420px; }
+        #dashboardGarbageOverview .dga-sub { font-size: 12px; }
+        #dashboardGarbageOverview .dga-list { max-height: 180px; }
+        .dash-visual {
             width: 100%;
-            height: 120px;
-            margin-bottom: 15px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            height: 180px;
+            background: #f0f0f0;
+            border-radius: 12px;
+            overflow: hidden;
         }
-        .dashboard-card .card-visual img {
-            max-width: 100%;
-            max-height: 100%;
-            border-radius: 8px;
-        }
-        .dashboard-card .card-visual .graph-container {
+        .dash-visual.small { height: 140px; }
+        .dash-visual .graph-container { width: 100%; height: 100%; }
+        .dash-map {
             width: 100%;
             height: 100%;
             position: relative;
-            background-color: #f0f0f0;
-            border-radius: 8px;
-            box-sizing: border-box;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #f0f0f0;
         }
-        /* Mini map container for Track Trucks card */
-        #dashboardTruckMap {
+        .dash-map-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            color: #374151;
+            background: rgba(255,255,255,0.65);
+            z-index: 2;
+            pointer-events: none;
+        }
+        #dashboardGarbageMini {
             width: 100%;
             height: 100%;
-            border-radius: 8px;
-        }
-        .dashboard-card-title {
-            color: #333;
-            font-weight: bold;
-            font-size: 1.2em;
-            margin: 0 0 10px 0;
-            text-align: center;
-        }
-        .dashboard-card-btn {
-            background: #5dbb29;
-            color: #fff;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1em;
-            cursor: pointer;
-            transition: background 0.2s ease-in-out;
-            width: 80%;
-            max-width: 200px;
-            text-decoration: none;
-            text-align: center;
-            display: block;
-        }
-        .dashboard-card-btn:hover {
-            background: #4a9e22;
-        }
-        .schedules-card {
+            padding: 10px 10px;
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
+            gap: 6px;
+        }
+        .dga-topline {
+            display: flex;
             justify-content: space-between;
+            gap: 8px;
+            align-items: baseline;
         }
-        .schedules-card h4 {
-            color: #32a000;
-            margin: 0 0 15px 0;
-            font-size: 1.2em;
+        .dga-toplabel {
+            font-weight: 900;
+            font-size: 12px;
+            color: #111827;
+            line-height: 1.1;
         }
-        .schedules-list {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            flex-grow: 1;
+        .dga-topvalue {
+            font-weight: 900;
+            font-size: 12px;
+            color: #111827;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 160px;
+            text-align: right;
         }
-        .schedules-list li {
-            padding: 10px 0;
-            font-size: 1em;
-            border-bottom: 1px solid #ddd;
+        .dga-sub {
+            font-weight: 800;
+            font-size: 11px;
+            color: #374151;
         }
-        .schedules-list li:last-child {
-            border-bottom: none;
+        .dga-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow: auto;
+            padding-right: 2px;
         }
-        .schedules-card .dashboard-card-btn {
+        .dga-item-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            align-items: baseline;
+            font-size: 11px;
+        }
+        .dga-name {
+            font-weight: 900;
+            color: #111827;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 170px;
+        }
+        .dga-level {
+            font-weight: 900;
+            color: #111827;
+            white-space: nowrap;
+        }
+        .dga-bar {
+            height: 8px;
+            background: rgba(255,255,255,0.7);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .dga-fill {
+            height: 8px;
+            border-radius: 999px;
+            width: 0%;
+        }
+
+        .mini-list {
             width: 100%;
-            margin-top: auto;
+            height: 100%;
+            box-sizing: border-box;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
+        .mini-list-title {
+            font-weight: 900;
+            font-size: 12px;
+            color: #111827;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .mini-list-body {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow: auto;
+            padding-right: 2px;
+        }
+        .mini-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 11px;
+            border-bottom: 1px solid rgba(0,0,0,0.08);
+            padding-bottom: 6px;
+        }
+        .mini-row:last-child { border-bottom: none; padding-bottom: 0; }
+        .mini-name { font-weight: 800; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+        .mini-val { font-weight: 900; color: #111827; white-space: nowrap; }
+
+        #dashboardTruckMapWrap { width: 100%; height: 100%; }
+        #dashboardTruckMap {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .schedules-list.dropoff-list { max-height: 260px; overflow: auto; padding-right: 4px; }
+
+        details.mini-details {
+            border: 1px solid #eef2f7;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #fff;
+            margin-top: 10px;
+        }
+        details.mini-details > summary {
+            cursor: pointer;
+            list-style: none;
+            padding: 10px 12px;
+            font-weight: 900;
+            color: #1f4f0c;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        details.mini-details > summary::-webkit-details-marker { display: none; }
+        details.mini-details .mini-details-body { padding: 10px 12px; }
+        #optimizationMap { width: 100%; height: 160px; border-radius: 8px; }
 
         /* Drop-off list styling to match requested UI */
         .dropoff-list { padding: 0; }
@@ -208,6 +375,7 @@
             flex-direction: column;
             gap: 12px;
             border: 1px solid #eef2f7;
+            grid-column: 1 / -1;
         }
         .optimizer-row {
             display: flex;
@@ -385,170 +553,172 @@
 <body>
     {% include 'partials/topbar.html' with active_tab='dashboard' %}
     
-    <div class="main">
-        <div class="description-section">
-            <div class="description-content">
-                <h1>GTrack: Smarter, Cleaner, On‑Time Waste Collection</h1>
-                <p class="lead">Real‑time truck tracking, bin level monitoring, and route‑optimized schedules — all in one dashboard.</p>
-                <div class="cta-row">
-                    <a href="{% url 'track_trucks' %}">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h12v10H3zM16 8h3l3 3v5h-6zM6 19a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm10 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>
-                        Track Trucks
-                    </a>
-                    <a href="{% url 'garbage_level' %}">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h18v2H3zm0-4h18v2H3zm0-4h18v2H3z"/></svg>
-                        Garbage Levels
-                    </a>
-                    
-                    <a href="{% url 'help' %}">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 15h-1v-1c0-1.1.9-2 2-2 .55 0 1-.45 1-1s-.45-1-1-1h-1V9h1c1.65 0 3 1.35 3 3 0 1.3-.84 2.4-2 2.82V17z"/></svg>
-                        Help
-                    </a>
-                    <a href="/login/?next={% url 'dashboard' %}">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M10 17l5-5-5-5v10zm-6 4V3h8v2H6v12h6v2H4z"/></svg>
-                        Login
-                    </a>
-                </div>
-                {% if user.is_staff or user.is_superuser %}
-                <div class="cta-row" style="margin-top: 8px;">
-                    <a href="{% url 'resident_verification' %}">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4S14.21 4 12 4 8 5.79 8 8s1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-                        Resident Verification
-                    </a>
-                    <a href="{% url 'driver_verification' %}">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h12v8H3zM15 9h3l3 3v2h-6zM6 18a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm10 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>
-                        Garbage Truck Verification
-                    </a>
-                </div>
-                {% endif %}
-                <div class="highlights">
-                    <div class="highlight">
-                        <h3>Live Locations</h3>
-                        <p>See truck positions update as they move.</p>
-                    </div>
-                    <div class="highlight">
-                        <h3>Smart Alerts</h3>
-                        <p>Get notified before bins overflow.</p>
-                    </div>
-                    <div class="highlight">
-                        <h3>Optimized Routes</h3>
-                        <p>Reduce fuel and time with AI‑driven paths.</p>
+    <div class="dash-main">
+        <div class="main">
+                <div class="dash-header">
+                    <div>
+                        <h1 class="dash-title">Dashboard</h1>
+                        <p class="dash-subtitle">Live tracking, schedules, and waste levels.</p>
                     </div>
                 </div>
-            </div>
-        </div>
-        <!-- Live stats summary -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon">🚛</div>
-                <div>
-                    <div class="stat-value" id="totalCollectorsCount">—</div>
-                    <div class="stat-label">Total Collectors</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">🗑️</div>
-                <div>
-                    <div class="stat-value" id="highBinsCount">—</div>
-                    <div class="stat-label">Bins High/Extreme</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">📦</div>
-                <div>
-                    <div class="stat-value" id="activeDropoffsCount">—</div>
-                    <div class="stat-label">Active Drop‑Offs</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">🛰️</div>
-                <div>
-                    <div class="stat-value" id="liveTrackingCount">—</div>
-                    <div class="stat-label">Live Tracking</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="dashboard-cards">
-            <div class="dashboard-card">
-                <div class="card-visual">
-                    <!-- Replace photo with live mini map -->
-                    <div id="dashboardTruckMap"></div>
-                </div>
-                <div class="dashboard-card-title">Track Trucks</div>
-                <button class="dashboard-card-btn" onclick="location.href='{% url 'track_trucks' %}'">Open</button>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-visual">
-                    <div class="graph-container">
-                        <canvas id="garbageLevelChart"></canvas>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">🚛</div>
+                        <div>
+                            <div class="stat-value" id="totalCollectorsCount">—</div>
+                            <div class="stat-label">Total Collectors</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🗑️</div>
+                        <div>
+                            <div class="stat-value" id="highBinsCount">—</div>
+                            <div class="stat-label">Bins High/Extreme</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📦</div>
+                        <div>
+                            <div class="stat-value" id="activeDropoffsCount">—</div>
+                            <div class="stat-label">Active Drop‑Offs</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🛰️</div>
+                        <div>
+                            <div class="stat-value" id="liveTrackingCount">—</div>
+                            <div class="stat-label">Live Tracking</div>
+                        </div>
                     </div>
                 </div>
-                <div class="dashboard-card-title">Garbage Level</div>
-                <button class="dashboard-card-btn" onclick="location.href='{% url 'garbage_level' %}'">Open</button>
-            </div>
-            
-            <div class="schedules-card">
-                <h4 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                    <span>Drop‑off Locations List</span>
-                    <span style="display:flex; gap:8px; align-items:center;">
-                        <select id="routeSelectDrop" style="padding:6px 10px; border:1px solid #ddd; border-radius:8px;">
-                            <option value="">Select route…</option>
-                        </select>
-                        <button id="optimizeBtnDrop" class="dashboard-card-btn" style="width:auto; padding:8px 12px;">Optimize</button>
-                    </span>
-                </h4>
-                <ul class="schedules-list dropoff-list" id="dropoffsList">
-                    <li>Loading drop‑off points…</li>
-                </ul>
-                <div class="optimization-panel" style="margin-top:10px;">
-                    <div style="display:flex; align-items:center; justify-content:space-between;">
-                        <h5 style="margin:0;">Optimized Route Summary</h5>
-                        <div class="opt-metrics"><span id="optTotalDistanceDrop">—</span> km</div>
-                    </div>
-                    <ul class="opt-list" id="optListDrop">
-                        <li>Select a route above and click Optimize.</li>
-                    </ul>
-                    <div id="optimizationMapDrop" style="width:100%; height:180px; border-radius:8px; margin-top:8px;"></div>
-                    <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-                        <a id="optApiLinkDrop" class="opt-link" href="#" target="_blank" style="display:none;">Open Optimization API</a>
-                        <span id="optArtifactIdDrop" style="font-size:0.85em; color:#7f8c8d;"></span>
-                    </div>
+
+                <div class="dash-grid">
+            <div class="dash-card">
+                <div class="dash-card-head">
+                    <h2 class="dash-card-title">Garbage Level</h2>
+                    <a class="dash-card-action" href="{% url 'garbage_level' %}">Open</a>
+                </div>
+                <div class="dash-card-body">
+                    <div id="dashboardGarbageMini" style="display:none;"></div>
+                    <div id="dashboardGarbageOverview"></div>
                 </div>
             </div>
-            
-            <!-- AI Route Optimizer -->
-            <div class="optimizer-card">
-                <div style="display:flex; align-items:center; justify-content:space-between;">
-                    <div class="dashboard-card-title" style="margin:0;">AI Route Optimizer</div>
-                    <div class="opt-metrics"><span id="optTotalDistance">—</span> km total</div>
+
+            <div class="dash-card">
+                <div class="dash-card-head">
+                    <h2 class="dash-card-title">Track Trucks</h2>
+                    <a class="dash-card-action" href="{% url 'track_trucks' %}">Open</a>
                 </div>
-                <div class="optimizer-row">
-                    <select id="routeSelect">
-                        <option value="">Select a route…</option>
-                        <!-- Auto-generated options will be added at runtime -->
-                    </select>
-                    <button id="optimizeBtn">Optimize Route</button>
-                </div>
-                <div class="optimization-results">
-                    <div class="optimization-panel">
-                        <h5>Suggested Order</h5>
-                        <ul class="opt-list" id="optList">
-                            <li>Pick a route and click Optimize.</li>
-                        </ul>
-                    </div>
-                    <div class="optimization-panel">
-                        <h5>Mini Map</h5>
-                        <div id="optimizationMap"></div>
-                        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-                            <a id="optApiLink" class="opt-link" href="#" target="_blank" style="display:none;">Open Optimization API</a>
-                            <span id="optArtifactId" style="font-size:0.85em; color:#7f8c8d;"></span>
+                <div class="dash-card-body">
+                    <div class="dash-visual">
+                        <div class="dash-map" id="dashboardTruckMapWrap">
+                            <div id="dashboardTruckMap"></div>
+                            <div class="dash-map-overlay" id="truckMapOverlay">Loading map…</div>
                         </div>
                     </div>
                 </div>
             </div>
-            
+
+            <div class="dash-card">
+                <div class="dash-card-head">
+                    <h2 class="dash-card-title">Resident Schedule (Today)</h2>
+                    <a class="dash-card-action" href="{% url 'schedules' %}">Open</a>
+                </div>
+                <div class="dash-card-body">
+                    <div class="dash-visual small">
+                        <div class="graph-container">
+                            <div class="mini-list" id="dashResidentSched"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dash-card">
+                <div class="dash-card-head">
+                    <h2 class="dash-card-title">Collector Schedule (Today)</h2>
+                    <a class="dash-card-action" href="{% url 'collector_schedules' %}">Open</a>
+                </div>
+                <div class="dash-card-body">
+                    <div class="dash-visual small">
+                        <div class="graph-container">
+                            <div class="mini-list" id="dashCollectorSched"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dash-card span-2">
+                <div class="dash-card-head">
+                    <h2 class="dash-card-title">Drop‑off Locations</h2>
+                    <span style="display:flex; gap:8px; align-items:center;">
+                        <select id="routeSelectDrop" style="padding:8px 10px; border:1px solid #ddd; border-radius:10px;">
+                            <option value="">Select route…</option>
+                        </select>
+                        <button id="optimizeBtnDrop" class="dash-card-action" type="button">Optimize</button>
+                    </span>
+                </div>
+                <div class="dash-card-body">
+                    <ul class="schedules-list dropoff-list" id="dropoffsList">
+                        <li>Loading drop‑off points…</li>
+                    </ul>
+                    <details class="mini-details">
+                        <summary><span>Optimization</span><span class="muted">Expand</span></summary>
+                        <div class="mini-details-body">
+                            <div class="optimization-panel">
+                                <div style="display:flex; align-items:center; justify-content:space-between;">
+                                    <h5 style="margin:0;">Optimized Route Summary</h5>
+                                    <div class="opt-metrics"><span id="optTotalDistanceDrop">—</span> km</div>
+                                </div>
+                                <ul class="opt-list" id="optListDrop">
+                                    <li>Select a route above and click Optimize.</li>
+                                </ul>
+                                <div id="optimizationMapDrop" style="width:100%; height:140px; border-radius:8px; margin-top:8px;"></div>
+                                <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+                                    <a id="optApiLinkDrop" class="opt-link" href="#" target="_blank" style="display:none;">Open Optimization API</a>
+                                    <span id="optArtifactIdDrop" style="font-size:0.85em; color:#7f8c8d;"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            <div class="dash-card span-2">
+                <div class="dash-card-head">
+                    <h2 class="dash-card-title">AI Route Optimizer</h2>
+                    <span class="opt-metrics"><span id="optTotalDistance">—</span> km</span>
+                </div>
+                <div class="dash-card-body">
+                    <details class="mini-details">
+                        <summary><span>Open Optimizer</span><span class="muted">Expand</span></summary>
+                        <div class="mini-details-body">
+                            <div class="optimizer-row" style="margin-bottom:10px;">
+                                <select id="routeSelect">
+                                    <option value="">Select a route…</option>
+                                </select>
+                                <button id="optimizeBtn" type="button">Optimize</button>
+                            </div>
+                            <div class="optimization-results">
+                                <div class="optimization-panel">
+                                    <h5>Suggested Order</h5>
+                                    <ul class="opt-list" id="optList">
+                                        <li>Pick a route and click Optimize.</li>
+                                    </ul>
+                                </div>
+                                <div class="optimization-panel">
+                                    <h5>Mini Map</h5>
+                                    <div id="optimizationMap"></div>
+                                    <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+                                        <a id="optApiLink" class="opt-link" href="#" target="_blank" style="display:none;">Open Optimization API</a>
+                                        <span id="optArtifactId" style="font-size:0.85em; color:#7f8c8d;"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -586,94 +756,173 @@
         };
         const app = firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
+        const routePoints = {{ route_points_json|default:"[]"|safe }};
+        const MAIN_ROUTE_ID = "{{ route_id|default:'' }}";
     
-        const levelOrder = { low: 1, medium: 2, high: 3, extreme: 3 };
-        const levelColor = { low: '#32a000', medium: '#ffe500', high: '#ff3838', extreme: '#ff3838' };
-    
-        const chartEl = document.getElementById('garbageLevelChart');
-        if (chartEl) {
-            const ctx = chartEl.getContext('2d');
-            const chart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        data: [],
-                        backgroundColor: [],
-                        borderWidth: 0,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                title: (items) => items[0].label,
-                                label: (item) => {
-                                    const val = item.raw;
-                                    const label = val === 1 ? 'Low' : val === 2 ? 'Medium' : 'High';
-                                    return `Level: ${label}`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            ticks: {
-                                autoSkip: true,
-                                maxRotation: 45,
-                                minRotation: 0,
-                                callback: (value, index, ticks) => {
-                                    const label = chart.data.labels[index] || '';
-                                    return label.length > 18 ? label.slice(0, 18) + '…' : label;
-                                }
-                            },
-                            grid: { display: false }
-                        },
-                        y: {
-                            min: 0,
-                            max: 3,
-                            ticks: {
-                                stepSize: 1,
-                                callback: (v) => ({0:'',1:'Low',2:'Medium',3:'High'}[v] || '')
-                            },
-                            grid: { display: false }
-                        }
-                    }
-                }
-            });
-    
-            function refreshChart(docs) {
-                const labels = [];
-                const values = [];
-                const colors = [];
-                docs.forEach(doc => {
-                    const d = doc.data();
-                    const level = (d.garbageLevel || '').toLowerCase();
-                    labels.push(d.location || doc.id);
-                    values.push(levelOrder[level] || 0);
-                    colors.push(levelColor[level] || '#5dbb29');
-                });
-                chart.data.labels = labels;
-                chart.data.datasets[0].data = values;
-                chart.data.datasets[0].backgroundColor = colors;
-                chart.update();
-            }
-    
-            db.collection('garbagelevel').onSnapshot(
-                (snapshot) => refreshChart(snapshot.docs),
-                (err) => console.error('Firestore listen error', err)
-            );
+        function canonKey(s){ return String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' '); }
+        function rawToPercent(raw){
+            if(raw==null || raw==='') return 0;
+            if(typeof raw === 'number') return Math.max(0, Math.min(100, raw));
+            const n = Number(raw);
+            if(!Number.isNaN(n)) return Math.max(0, Math.min(100, n));
+            const s = String(raw).toLowerCase();
+            if(s.includes('low') || s==='1') return 25;
+            if(s.includes('med') || s==='2') return 55;
+            if(s.includes('high') || s.includes('extreme') || s==='3') return 85;
+            return 0;
         }
+        function labelFromPercent(pct){
+            if(pct >= 67) return 'High';
+            if(pct >= 34) return 'Medium';
+            if(pct > 0) return 'Low';
+            return 'N/A';
+        }
+        function colorFromPercent(pct){
+            if(pct >= 67) return '#ff3838';
+            if(pct >= 34) return '#ffe500';
+            return '#32a000';
+        }
+        function computeOverallByRoute(items){
+            const pts = Array.isArray(routePoints) ? routePoints.slice().sort((a,b)=>(a.order||0)-(b.order||0)) : [];
+            const allowed = new Set(pts.map(p=>canonKey(p.location_name)).filter(Boolean));
+            const agg = new Map();
+            items.forEach(it=>{
+                const nm = (it.location || it.location_name || it.locationName || it.name || '').toString().trim();
+                if(!nm) return;
+                const k = canonKey(nm);
+                if(!allowed.has(k)) return;
+                const raw = (it.garbageLevel ?? it.garbage_level ?? it.level ?? it.severity ?? it.status);
+                const pct = rawToPercent(raw);
+                const prev = agg.get(k) || { sum:0, count:0 };
+                agg.set(k, { sum: prev.sum + pct, count: prev.count + 1 });
+            });
+            return pts.map(p=>{
+                const nm = String(p.location_name||'').trim();
+                const k = canonKey(nm);
+                const v = agg.get(k);
+                const avg = v && v.count ? (v.sum / v.count) : 0;
+                const pct = Math.round(avg);
+                return { name: nm, percent: pct, label: labelFromPercent(pct), color: colorFromPercent(pct) };
+            });
+        }
+        function renderMiniAnalysis(rows) {
+            const el = document.getElementById('dashboardGarbageMini');
+            if (!el) return;
+            if (!rows || !rows.length) {
+                el.innerHTML = '<div class=\"dga-topline\"><div class=\"dga-toplabel\">Highest overall</div><div class=\"dga-topvalue\">—</div></div><div class=\"dga-sub\">Bar chart (overall average)</div><div class=\"dga-list\"></div>';
+                return;
+            }
+            const best = rows.slice().sort((a, b) => b.percent - a.percent)[0];
+            const top = '<div class=\"dga-topline\"><div class=\"dga-toplabel\">Highest overall</div><div class=\"dga-topvalue\">' + (best ? (best.name + ' — ' + best.label) : '—') + '</div></div>';
+            const sub = '<div class=\"dga-sub\">Bar chart (overall average)</div>';
+            const list = rows.map((r) => {
+                const pct = Math.max(0, Math.min(100, r.percent || 0));
+                return (
+                    '<div>' +
+                    '<div class=\"dga-item-head\"><div class=\"dga-name\">' + r.name + '</div><div class=\"dga-level\">' + r.label + '</div></div>' +
+                    '<div class=\"dga-bar\"><div class=\"dga-fill\" style=\"width:' + pct + '%; background:' + (r.color || '#5dbb29') + ';\"></div></div>' +
+                    '</div>'
+                );
+            }).join('');
+            el.innerHTML = top + sub + '<div class=\"dga-list\">' + list + '</div>';
+        }
+        function renderOverviewAnalysis(rows) {
+            const el = document.getElementById('dashboardGarbageOverview');
+            if (!el) return;
+            if (!rows || !rows.length) {
+                el.innerHTML = '<div class=\"dga-topline\"><div class=\"dga-toplabel\">Highest overall</div><div class=\"dga-topvalue\">—</div></div><div class=\"dga-sub\">Bar chart (overall average)</div><div class=\"dga-list\"></div>';
+                return;
+            }
+            const best = rows.slice().sort((a, b) => b.percent - a.percent)[0];
+            const top = '<div class=\"dga-topline\"><div class=\"dga-toplabel\">Highest overall</div><div class=\"dga-topvalue\">' + (best ? (best.name + ' — ' + best.label) : '—') + '</div></div>';
+            const sub = '<div class=\"dga-sub\">Bar chart (overall average)</div>';
+            const list = rows.map((r) => {
+                const pct = Math.max(0, Math.min(100, r.percent || 0));
+                return (
+                    '<div>' +
+                    '<div class=\"dga-item-head\"><div class=\"dga-name\">' + r.name + '</div><div class=\"dga-level\">' + r.label + '</div></div>' +
+                    '<div class=\"dga-bar\"><div class=\"dga-fill\" style=\"width:' + pct + '%; background:' + (r.color || '#5dbb29') + ';\"></div></div>' +
+                    '</div>'
+                );
+            }).join('');
+            el.innerHTML = top + sub + '<div class=\"dga-list\">' + list + '</div>';
+        }
+        db.collection('garbagelevel').onSnapshot((snapshot)=>{
+            const items = snapshot.docs.map(d=>({ id:d.id, ...d.data() }));
+            const rows = computeOverallByRoute(items);
+            renderMiniAnalysis(rows);
+            renderOverviewAnalysis(rows);
+        }, (err)=>console.error('Firestore listen error', err));
+
+        function fmtIsoDate(dt) {
+            const y = dt.getFullYear();
+            const m = String(dt.getMonth() + 1).padStart(2, '0');
+            const d = String(dt.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function renderMiniList(elId, titleLeft, titleRight, rows) {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            const head = `<div class="mini-list-title"><span>${titleLeft}</span><span>${titleRight || ''}</span></div>`;
+            if (!rows || !rows.length) {
+                el.innerHTML = head + `<div class="mini-list-body"><div class="mini-row"><span class="mini-name">No data</span><span class="mini-val">—</span></div></div>`;
+                return;
+            }
+            const body = rows.map(r => {
+                const name = String(r.name || '').trim();
+                const val = String(r.value || '—');
+                return `<div class="mini-row"><span class="mini-name">${name}</span><span class="mini-val">${val}</span></div>`;
+            }).join('');
+            el.innerHTML = head + `<div class="mini-list-body">${body}</div>`;
+        }
+
+        (function initMiniSchedules(){
+            const todayIso = fmtIsoDate(new Date());
+            const pts = Array.isArray(routePoints) ? routePoints.slice().sort((a,b)=>(a.order||0)-(b.order||0)) : [];
+            const desired = pts.map(p => ({ key: canonKey(p.location_name), name: String(p.location_name || '').trim() })).filter(x => x.key);
+            const desiredSet = new Set(desired.map(x => x.key));
+
+            db.collection('dropoffSchedules').where('date', '==', todayIso).onSnapshot((snapshot) => {
+                const byKey = new Map();
+                snapshot.forEach(doc => {
+                    const d = doc.data() || {};
+                    const rawName = String(d.name || d.location || doc.id || '').trim();
+                    if (!rawName) return;
+                    const k = canonKey(rawName);
+                    if (desiredSet.size && !desiredSet.has(k)) return;
+                    const times = Array.isArray(d.times) ? d.times : [];
+                    const time = String(d.time || '').trim();
+                    const val = times.length ? times.join(', ') : (time || '—');
+                    byKey.set(k, val);
+                });
+                const rows = desired.length ? desired.map(x => ({ name: x.name, value: byKey.get(x.key) || '—' })) : Array.from(byKey.entries()).map(([k,v]) => ({ name: k, value: v }));
+                renderMiniList('dashResidentSched', 'Today Drop-off', todayIso, rows);
+            }, () => renderMiniList('dashResidentSched', 'Today Drop-off', todayIso, []));
+
+            db.collection('collector_schedules').where('date', '==', todayIso).onSnapshot((snapshot) => {
+                const rows = [];
+                snapshot.forEach(doc => {
+                    const d = doc.data() || {};
+                    const rid = String(d.routeId || d.route_id || '').trim();
+                    if (MAIN_ROUTE_ID && rid && rid !== String(MAIN_ROUTE_ID)) return;
+                    const cid = String(d.collectorId || d.collector_id || '').trim();
+                    if (cid !== '1' && cid !== '2') return;
+                    rows.push({ name: `Collector ${cid}`, value: '06:00 AM - 10:00 PM' });
+                });
+                rows.sort((a,b)=>a.name.localeCompare(b.name));
+                renderMiniList('dashCollectorSched', 'Today Collect', todayIso, rows);
+            }, () => renderMiniList('dashCollectorSched', 'Today Collect', todayIso, []));
+        })();
 
         // Live stat: bins high/extreme
         db.collection('garbagelevel').onSnapshot((snapshot) => {
             let count = 0;
             snapshot.forEach(doc => {
-                const lvl = (doc.data().garbageLevel || '').toString().toLowerCase();
-                if (['high','severe','extreme'].includes(lvl)) count++;
+                const d = doc.data() || {};
+                const raw = (d.garbageLevel ?? d.garbage_level ?? d.level ?? d.severity ?? d.status);
+                const pct = rawToPercent(raw);
+                if (pct >= 67) count++;
             });
             const el = document.getElementById('highBinsCount');
             if (el) el.textContent = String(count);
@@ -682,62 +931,90 @@
         // Live mini map for Track Trucks card
         (function initDashboardMiniMap(){
             const el = document.getElementById('dashboardTruckMap');
-            if (!el || typeof google === 'undefined' || !google.maps) return;
-            const map = new google.maps.Map(el, {
-                center: { lat: 14.5995, lng: 120.9842 },
-                zoom: 12,
-                disableDefaultUI: true
-            });
-            const markers = {};
-            function getTruckIcon(size = 28) {
-                const svg = `<?xml version="1.0" encoding="UTF-8"?>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-                  <rect x="8" y="22" width="30" height="18" rx="3" fill="#32a000"/>
-                  <rect x="38" y="26" width="14" height="14" rx="2" fill="#4caf50"/>
-                  <rect x="44" y="24" width="6" height="6" rx="1" fill="#c8e6c9"/>
-                  <circle cx="18" cy="42" r="5" fill="#263238"/>
-                  <circle cx="47" cy="42" r="5" fill="#263238"/>
-                  <circle cx="18" cy="42" r="2" fill="#90a4ae"/>
-                  <circle cx="47" cy="42" r="2" fill="#90a4ae"/>
-                </svg>`;
-                return {
-                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-                    scaledSize: new google.maps.Size(size, size),
-                    anchor: new google.maps.Point(size / 2, size * 0.75),
-                };
+            const overlay = document.getElementById('truckMapOverlay');
+            if (!el) return;
+            if (typeof google === 'undefined' || !google.maps) {
+                if (overlay) overlay.textContent = 'Map unavailable';
+                return;
             }
-            const bounds = new google.maps.LatLngBounds();
-            function upsertMarker(id, lat, lng) {
-                const pos = { lat: parseFloat(lat), lng: parseFloat(lng) };
-                let m = markers[id];
-                if (!m) {
-                    m = new google.maps.Marker({ position: pos, map, title: `Collector ${id}`, icon: getTruckIcon(28) });
-                    markers[id] = m;
-                } else {
-                    m.setPosition(pos);
-                }
-                bounds.extend(pos);
-                map.fitBounds(bounds);
-            }
-            db.collection('collectors').onSnapshot((snapshot) => {
-                snapshot.docChanges().forEach((chg) => {
-                    const id = chg.doc.id;
-                    const d = chg.doc.data() || {};
-                    const lat = typeof d.latitude === 'string' ? parseFloat(d.latitude) : d.latitude;
-                    const lng = typeof d.longitude === 'string' ? parseFloat(d.longitude) : d.longitude;
-                    if (chg.type === 'removed') {
-                        if (markers[id]) { markers[id].setMap(null); delete markers[id]; }
-                        return;
-                    }
-                    if (lat != null && lng != null) upsertMarker(id, lat, lng);
+
+            function init() {
+                const map = new google.maps.Map(el, {
+                    center: { lat: 14.5995, lng: 120.9842 },
+                    zoom: 12,
+                    disableDefaultUI: true
                 });
-                const liveEl = document.getElementById('liveTrackingCount');
-                if (liveEl) liveEl.textContent = String(Object.keys(markers).length);
-                const totalEl = document.getElementById('totalCollectorsCount');
-                if (totalEl) totalEl.textContent = String(snapshot.size);
-            }, (err) => console.warn('Collectors listen error', err));
+                let overlayHidden = false;
+                function hideOverlay() {
+                    if (!overlayHidden && overlay) {
+                        overlayHidden = true;
+                        overlay.style.display = 'none';
+                    }
+                }
+                google.maps.event.addListenerOnce(map, 'tilesloaded', hideOverlay);
+                google.maps.event.addListenerOnce(map, 'idle', hideOverlay);
+                setTimeout(function () {
+                    google.maps.event.trigger(map, 'resize');
+                    map.setCenter({ lat: 14.5995, lng: 120.9842 });
+                }, 60);
+                setTimeout(function () {
+                    if (!overlayHidden && overlay) overlay.textContent = 'Map failed to load';
+                }, 4500);
+                const markers = {};
+                function getTruckIcon(size = 28) {
+                    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+                      <rect x="8" y="22" width="30" height="18" rx="3" fill="#32a000"/>
+                      <rect x="38" y="26" width="14" height="14" rx="2" fill="#4caf50"/>
+                      <rect x="44" y="24" width="6" height="6" rx="1" fill="#c8e6c9"/>
+                      <circle cx="18" cy="42" r="5" fill="#263238"/>
+                      <circle cx="47" cy="42" r="5" fill="#263238"/>
+                      <circle cx="18" cy="42" r="2" fill="#90a4ae"/>
+                      <circle cx="47" cy="42" r="2" fill="#90a4ae"/>
+                    </svg>`;
+                    return {
+                        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+                        scaledSize: new google.maps.Size(size, size),
+                        anchor: new google.maps.Point(size / 2, size * 0.75),
+                    };
+                }
+                const bounds = new google.maps.LatLngBounds();
+                function upsertMarker(id, lat, lng) {
+                    const pos = { lat: parseFloat(lat), lng: parseFloat(lng) };
+                    let m = markers[id];
+                    if (!m) {
+                        m = new google.maps.Marker({ position: pos, map, title: `Collector ${id}`, icon: getTruckIcon(28) });
+                        markers[id] = m;
+                    } else {
+                        m.setPosition(pos);
+                    }
+                    bounds.extend(pos);
+                    if (!bounds.isEmpty()) map.fitBounds(bounds);
+                }
+                db.collection('collectors').onSnapshot((snapshot) => {
+                    snapshot.docChanges().forEach((chg) => {
+                        const id = chg.doc.id;
+                        const d = chg.doc.data() || {};
+                        const lat = typeof d.latitude === 'string' ? parseFloat(d.latitude) : d.latitude;
+                        const lng = typeof d.longitude === 'string' ? parseFloat(d.longitude) : d.longitude;
+                        if (chg.type === 'removed') {
+                            if (markers[id]) { markers[id].setMap(null); delete markers[id]; }
+                            return;
+                        }
+                        if (lat != null && lng != null) upsertMarker(id, lat, lng);
+                    });
+                    const liveEl = document.getElementById('liveTrackingCount');
+                    if (liveEl) liveEl.textContent = String(Object.keys(markers).length);
+                    const totalEl = document.getElementById('totalCollectorsCount');
+                    if (totalEl) totalEl.textContent = '2';
+                }, (err) => console.warn('Collectors listen error', err));
+            }
+
+            requestAnimationFrame(function () {
+                requestAnimationFrame(init);
+            });
         })();
-        
+
         // --- Optimizer controls inside Drop‑off card ---
         (function initDropoffOptimizer(){
             const routeSelect = document.getElementById('routeSelectDrop');
@@ -854,22 +1131,42 @@
         (function loadDropoffs(){
             const listEl = document.getElementById('dropoffsList');
             if (!listEl) return;
-            // Use the collection used by CRUD page: 'dropofflocation'
             db.collection('dropofflocation').onSnapshot((snapshot) => {
-                const docs = snapshot.docs;
                 const countEl = document.getElementById('activeDropoffsCount');
-                if (countEl) countEl.textContent = String(docs.length || 0);
+                const pts = Array.isArray(routePoints) ? routePoints.slice().sort((a,b)=>(a.order||0)-(b.order||0)) : [];
+                const desired = pts.map(p => ({ key: canonKey(p.location_name), name: String(p.location_name || '').trim() })).filter(x => x.key);
+                const desiredSet = new Set(desired.map(x => x.key));
+                const found = new Map();
 
+                const docs = snapshot.docs;
                 if (docs.length === 0) {
+                    if (countEl) countEl.textContent = '0';
                     listEl.innerHTML = '<li>No drop‑off points available.</li>';
                     return;
                 }
                 function esc(s){
                     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
                 }
-                listEl.innerHTML = docs.map(d => {
+
+                docs.forEach(d => {
                     const v = d.data() || {};
-                    const name = esc(v.location || v.name || d.id);
+                    const rawName = String(v.location || v.name || d.id || '').trim();
+                    if (!rawName) return;
+                    const key = canonKey(rawName);
+                    if (desiredSet.size && !desiredSet.has(key)) return;
+                    if (!found.has(key)) found.set(key, rawName);
+                });
+
+                const rows = desired.length ? desired.map(x => ({ key: x.key, name: found.get(x.key) || x.name })).filter(r => !!r.name) : Array.from(found.entries()).map(([k, n]) => ({ key: k, name: n }));
+                if (countEl) countEl.textContent = String(rows.length || 0);
+
+                if (!rows.length) {
+                    listEl.innerHTML = '<li>No drop‑off points available.</li>';
+                    return;
+                }
+
+                listEl.innerHTML = rows.map(r => {
+                    const name = esc(r.name);
                     return `
                         <li class="dropoff-item">
                             <div class="left">

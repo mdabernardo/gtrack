@@ -1,0 +1,163 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0; }
+        .main { padding: 18px 18px 30px; max-width: 1100px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; margin-bottom: 14px; }
+        .title { margin: 0; font-size: 1.6em; font-weight: 900; color: #1f4f0c; }
+        .subtitle { margin: 4px 0 0; color: #6b7280; font-weight: 600; }
+        .card { background: #fff; border: 1px solid #eef2f7; border-radius: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.06); overflow: hidden; }
+        .card-head { padding: 14px 16px; border-bottom: 1px solid #eef2f7; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        select { padding: 10px 12px; border-radius: 12px; border: 1px solid #ddd; font-weight: 800; }
+        .btn { background: #5dbb29; color: #fff; border: 0; border-radius: 12px; padding: 10px 12px; font-weight: 900; cursor: pointer; }
+        .btn:hover { background: #4a9e22; }
+        .muted { color: #6b7280; font-weight: 700; }
+        .card-body { padding: 14px 16px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px 8px; border-bottom: 1px solid #eef2f7; text-align: left; font-size: 14px; }
+        th { font-weight: 900; color: #111827; background: #f9fafb; }
+        td { font-weight: 700; color: #111827; }
+        .pill { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 900; background: #f3f4f6; color: #374151; }
+        .pill.ok { background: #e5f5e0; color: #256b00; }
+        .pill.warn { background: #fee2e2; color: #991b1b; }
+        .empty { padding: 14px 0; }
+    </style>
+</head>
+<body>
+    {% include 'partials/topbar.html' with active_tab='history' %}
+    <div class="main">
+        <div class="header">
+            <div>
+                <h1 class="title">Collection History</h1>
+                <p class="subtitle">Past collection runs per route (from SQL history).</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">
+                <div class="controls">
+                    <select id="routeSelect">
+                        <option value="">Select route…</option>
+                    </select>
+                    <button class="btn" type="button" id="refreshBtn">Refresh</button>
+                </div>
+                <div class="muted" id="metaText">—</div>
+            </div>
+            <div class="card-body">
+                <div id="statusRow" class="muted empty">Select a route.</div>
+                <div style="overflow:auto;">
+                    <table id="historyTable" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Start</th>
+                                <th>End</th>
+                                <th>Weather</th>
+                                <th>Traffic</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            function safeStr(v) { return (v === null || v === undefined) ? '' : String(v); }
+            function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+            var routeSelect = document.getElementById('routeSelect');
+            var refreshBtn = document.getElementById('refreshBtn');
+            var metaText = document.getElementById('metaText');
+            var statusRow = document.getElementById('statusRow');
+            var table = document.getElementById('historyTable');
+            var body = document.getElementById('historyBody');
+
+            function setStatus(msg) {
+                if (statusRow) statusRow.textContent = msg;
+                if (table) table.style.display = 'none';
+            }
+
+            function setMeta(msg) {
+                if (metaText) metaText.textContent = msg || '—';
+            }
+
+            function loadRoutes() {
+                fetch('/api/routes/')
+                    .then(r => r.ok ? r.json() : Promise.reject(new Error('Failed routes')))
+                    .then(routes => {
+                        if (!routeSelect) return;
+                        routes = (routes || []);
+                        routes.forEach(rt => {
+                            var opt = document.createElement('option');
+                            opt.value = rt.id;
+                            opt.textContent = rt.name || ('Route ' + rt.id);
+                            routeSelect.appendChild(opt);
+                        });
+                        if (routes.length && !routeSelect.value) {
+                            routeSelect.value = String(routes[0].id);
+                            loadHistory();
+                        }
+                    })
+                    .catch(() => {});
+            }
+
+            function loadHistory() {
+                var routeId = routeSelect ? routeSelect.value : '';
+                if (!routeId) {
+                    setMeta('—');
+                    setStatus('Select a route.');
+                    return;
+                }
+                setMeta('Loading…');
+                setStatus('Loading…');
+                fetch('/api/routes/' + encodeURIComponent(routeId) + '/history/')
+                    .then(r => r.ok ? r.json() : Promise.reject(new Error('Failed history')))
+                    .then(rows => {
+                        rows = Array.isArray(rows) ? rows : [];
+                        setMeta('Route ID: ' + routeId + ' • ' + rows.length + ' records');
+                        if (!rows.length) {
+                            setStatus('No history records.');
+                            return;
+                        }
+                        if (body) body.innerHTML = rows.map(function (x) {
+                            var d = esc(x.date || '');
+                            var st = esc(x.start_time || '');
+                            var et = esc(x.end_time || '');
+                            var w = esc(x.weather_condition || '—');
+                            var t = esc(x.traffic_condition || '—');
+                            var n = esc(x.notes || '—');
+                            return '<tr>' +
+                                '<td>' + d + '</td>' +
+                                '<td>' + st + '</td>' +
+                                '<td>' + (et || '—') + '</td>' +
+                                '<td>' + w + '</td>' +
+                                '<td>' + t + '</td>' +
+                                '<td>' + n + '</td>' +
+                            '</tr>';
+                        }).join('');
+                        if (table) table.style.display = '';
+                        if (statusRow) statusRow.textContent = '';
+                    })
+                    .catch(() => {
+                        setMeta('Route ID: ' + routeId);
+                        setStatus('Failed to load history.');
+                    });
+            }
+
+            if (refreshBtn) refreshBtn.addEventListener('click', loadHistory);
+            if (routeSelect) routeSelect.addEventListener('change', loadHistory);
+            loadRoutes();
+        })();
+    </script>
+</body>
+</html>

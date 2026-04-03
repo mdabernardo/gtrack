@@ -1,0 +1,579 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Road Map</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0; }
+        .main { padding: 18px 18px 30px; max-width: 1200px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; margin-bottom: 14px; }
+        .title { margin: 0; font-size: 1.6em; font-weight: 900; color: #1f4f0c; }
+        .subtitle { margin: 4px 0 0; color: #6b7280; font-weight: 600; }
+        .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+        .btn { background: #5dbb29; color: #fff; border: 0; border-radius: 12px; padding: 10px 12px; font-weight: 900; cursor: pointer; }
+        .btn:hover { background: #4a9e22; }
+        .btn.secondary { background: #111827; }
+        .btn.secondary:hover { background: #0b1220; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .workflow { margin-bottom: 14px; }
+        .workflow-steps { margin: 0; padding-left: 18px; color: #111827; font-weight: 700; }
+        .workflow-steps li { margin: 6px 0; }
+        .workflow-steps .muted { font-weight: 700; }
+        .workflow-controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+        .workflow-controls select { border: 1px solid #eef2f7; border-radius: 12px; padding: 10px 12px; font-weight: 900; }
+        .reroute-details { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #f9fafb; border: 1px solid #eef2f7; font-weight: 800; color: #111827; display:none; }
+        .reroute-details .muted { font-weight: 700; color: #6b7280; }
+        .ai-box { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #0b1220; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.08); display:block; }
+        .ai-box .ai-title { font-weight: 900; margin-bottom: 8px; }
+        .ai-box pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; line-height: 1.35; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+        @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+        .card { background: #fff; border: 1px solid #eef2f7; border-radius: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.06); overflow: hidden; }
+        .card-head { padding: 14px 16px; border-bottom: 1px solid #eef2f7; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .card-title { font-weight: 900; color: #111827; font-size: 1.05em; margin: 0; }
+        .badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 900; background: #f3f4f6; color: #374151; }
+        .badge.new { background: #fee2e2; color: #991b1b; }
+        .badge.processed { background: #e5f5e0; color: #256b00; }
+        .card-body { padding: 14px 16px; }
+        .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+        .tab { border: 1px solid #eef2f7; background: #fff; border-radius: 999px; padding: 8px 12px; cursor: pointer; font-weight: 900; color: #111827; }
+        .tab.active { background: #e5f5e0; border-color: #bfe6bf; color: #1f4f0c; }
+        .list { list-style: none; margin: 0; padding: 0; }
+        .item { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eef2f7; }
+        .item:last-child { border-bottom: none; }
+        .left { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        .name { font-weight: 900; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .meta { font-size: 12px; font-weight: 700; color: #6b7280; }
+        .desc { font-size: 12px; font-weight: 700; color: #374151; }
+        .right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; white-space: nowrap; }
+        .small { font-size: 12px; font-weight: 900; color: #111827; }
+        .muted { color: #6b7280; font-weight: 700; }
+        .status { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #f3f4f6; color: #111827; font-weight: 800; }
+        .status.ok { background: #e5f5e0; color: #1f4f0c; }
+        .status.err { background: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body>
+    {% include 'partials/topbar.html' with active_tab='road_map' %}
+    <div class="main">
+        <div class="header">
+            <div>
+                <h1 class="title">Road Map</h1>
+                <p class="subtitle">Incidents (road reports) and reroute artifacts from the database.</p>
+            </div>
+            <div class="actions">
+                <div class="workflow-controls">
+                    <select id="workflowRouteSelect">
+                        <option value="">Main Route</option>
+                    </select>
+                    <select id="workflowLocationSelect">
+                        <option value="">Select location…</option>
+                    </select>
+                    <button class="btn" type="button" id="previewBtn">Run AI / Refresh</button>
+                    <button class="btn secondary" type="button" id="approveBtn" disabled>Approve + Notify Mobile</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card workflow">
+            <div class="card-head">
+                <h2 class="card-title">AI Reroute Process</h2>
+                <span class="badge" id="workflowPicked">Pick a report</span>
+            </div>
+            <div class="card-body">
+                <div class="status" id="workflowStatus" style="display:none;"></div>
+                <div class="ai-box" id="aiTraceBox">
+                    <div class="ai-title">AI Decision Trace</div>
+                    <pre id="aiTraceText">—</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <div class="card-head">
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <h2 class="card-title">Road Reports</h2>
+                        <span class="badge" id="reportsCount">0</span>
+                        <span class="badge new" id="reportsNewCount">0 new</span>
+                    </div>
+                    <div class="tabs" id="reportsTabs">
+                        <button class="tab active" type="button" data-tab="all">All</button>
+                        <button class="tab" type="button" data-tab="new">New</button>
+                        <button class="tab" type="button" data-tab="processed">Processed</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <ul class="list" id="reportsList">
+                        <li class="item"><span class="muted">Loading…</span><span class="muted">—</span></li>
+                    </ul>
+                    <div class="status" id="processStatus" style="display:none;"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-head">
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <h2 class="card-title">Reroutes</h2>
+                        <span class="badge" id="rerouteCount">0</span>
+                    </div>
+                    <div class="tabs" id="rerouteTabs">
+                        <button class="tab active" type="button" data-tab="reroutr">reroutr</button>
+                        <button class="tab" type="button" data-tab="route_suggestion">route_suggestion</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <ul class="list" id="rerouteList">
+                        <li class="item"><span class="muted">Loading…</span><span class="muted">—</span></li>
+                    </ul>
+                    <div class="reroute-details" id="rerouteDetails"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.__firebase_config = '{{ firebase_config_json|escapejs }}';
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script>
+        (function () {
+            function safeStr(v) { return (v === null || v === undefined) ? '' : String(v); }
+            function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+            function statusBadge(status) {
+                var s = safeStr(status).toLowerCase();
+                if (!s || s === 'new') return '<span class="badge new">new</span>';
+                if (s === 'processed') return '<span class="badge processed">processed</span>';
+                return '<span class="badge">' + esc(s) + '</span>';
+            }
+
+            if (!window.__firebase_config) return;
+            var cfg;
+            try { cfg = JSON.parse(window.__firebase_config); } catch (e) { return; }
+            try { firebase.initializeApp(cfg); } catch (e) {}
+            var db = firebase.firestore();
+
+            var reportsList = document.getElementById('reportsList');
+            var rerouteList = document.getElementById('rerouteList');
+            var reportsCount = document.getElementById('reportsCount');
+            var reportsNewCount = document.getElementById('reportsNewCount');
+            var rerouteCount = document.getElementById('rerouteCount');
+            var processStatus = document.getElementById('processStatus');
+            var previewBtn = document.getElementById('previewBtn');
+            var approveBtn = document.getElementById('approveBtn');
+            var workflowRouteSelect = document.getElementById('workflowRouteSelect');
+            var workflowLocationSelect = document.getElementById('workflowLocationSelect');
+            var workflowStatus = document.getElementById('workflowStatus');
+            var workflowPicked = document.getElementById('workflowPicked');
+            var rerouteDetails = document.getElementById('rerouteDetails');
+            var aiTraceBox = document.getElementById('aiTraceBox');
+            var aiTraceText = document.getElementById('aiTraceText');
+            var activeReportsTab = 'all';
+            var activeRerouteTab = 'reroutr';
+
+            var reports = [];
+            var selectedLocation = '';
+            var selectedRoute = { id: '', name: 'Main Route' };
+            var previewReady = false;
+            function renderReports() {
+                if (!reportsList) return;
+                var filtered = reports.slice();
+                if (activeReportsTab === 'new') filtered = filtered.filter(r => (safeStr(r.status).toLowerCase() !== 'processed'));
+                if (activeReportsTab === 'processed') filtered = filtered.filter(r => (safeStr(r.status).toLowerCase() === 'processed'));
+                if (reportsCount) reportsCount.textContent = String(reports.length || 0);
+                var newCount = reports.filter(r => (safeStr(r.status).toLowerCase() !== 'processed')).length;
+                if (reportsNewCount) reportsNewCount.textContent = String(newCount) + ' new';
+                if (!filtered.length) {
+                    reportsList.innerHTML = '<li class="item"><span class="muted">No road reports.</span><span class="muted">—</span></li>';
+                    return;
+                }
+                reportsList.innerHTML = filtered.map(function (r) {
+                    var loc = esc(r.location || 'Unknown Location');
+                    var desc = esc(r.description || '—');
+                    var st = statusBadge(r.status);
+                    return (
+                        '<li class="item" data-location="' + esc(r.location || '') + '">' +
+                        '<div class="left">' +
+                        '<div class="name">' + loc + '</div>' +
+                        '<div class="desc">' + desc + '</div>' +
+                        '</div>' +
+                        '<div class="right">' +
+                        st +
+                        '</div>' +
+                        '</li>'
+                    );
+                }).join('');
+            }
+
+            var reroutes = [];
+            function renderReroutes() {
+                if (!rerouteList) return;
+                if (rerouteCount) rerouteCount.textContent = String(reroutes.length || 0);
+                if (!reroutes.length) {
+                    rerouteList.innerHTML = '<li class="item"><span class="muted">No reroute artifacts.</span><span class="muted">—</span></li>';
+                    if (rerouteDetails) rerouteDetails.style.display = 'none';
+                    return;
+                }
+                function extractNames(r) {
+                    var pts = r && (r.suggested_points || r.suggestedPoints);
+                    if (!Array.isArray(pts)) return [];
+                    var arr = pts.slice();
+                    arr.sort(function (a, b) { return (Number(a.order) || 0) - (Number(b.order) || 0); });
+                    return arr.map(function (p) {
+                        return safeStr(p.location_name || p.locationName || p.name || p.location || '');
+                    }).filter(Boolean);
+                }
+                function previewNames(names) {
+                    if (!names.length) return '—';
+                    var shown = names.slice(0, 4);
+                    var more = names.length - shown.length;
+                    return shown.join(' → ') + (more > 0 ? ('  (+' + more + ' more)') : '');
+                }
+                rerouteList.innerHTML = reroutes.slice(0, 12).map(function (r) {
+                    var routeName = esc(r.route_name || r.routeName || 'Route');
+                    var date = esc(r.date || '');
+                    var names = extractNames(r);
+                    var pts = names.length || (Array.isArray(r.suggested_points) ? r.suggested_points.length : 0);
+                    var km = r.factors && typeof r.factors.total_distance_km === 'number' ? r.factors.total_distance_km : null;
+                    var meta = [];
+                    if (date) meta.push(date);
+                    meta.push(pts + ' pts');
+                    if (km !== null) meta.push(km.toFixed(2) + ' km');
+                    return (
+                        '<li class="item" data-rid="' + esc(safeStr(r.id || '')) + '">' +
+                        '<div class="left">' +
+                        '<div class="name">' + routeName + '</div>' +
+                        '<div class="meta">' + esc(meta.join(' • ')) + '</div>' +
+                        '<div class="desc">' + esc(previewNames(names)) + '</div>' +
+                        '</div>' +
+                        '<div class="right">' +
+                        '<div class="small">' + esc(safeStr(r.generated_at || r.generatedAt || '')) + '</div>' +
+                        '</div>' +
+                        '</li>'
+                    );
+                }).join('');
+            }
+
+            function attachTabHandlers() {
+                var rt = document.getElementById('reportsTabs');
+                if (rt) {
+                    rt.addEventListener('click', function (e) {
+                        var btn = e.target && e.target.closest ? e.target.closest('button[data-tab]') : null;
+                        if (!btn) return;
+                        activeReportsTab = btn.dataset.tab || 'all';
+                        Array.from(rt.querySelectorAll('.tab')).forEach(function (b) { b.classList.remove('active'); });
+                        btn.classList.add('active');
+                        renderReports();
+                    });
+                }
+                var rr = document.getElementById('rerouteTabs');
+                if (rr) {
+                    rr.addEventListener('click', function (e) {
+                        var btn = e.target && e.target.closest ? e.target.closest('button[data-tab]') : null;
+                        if (!btn) return;
+                        activeRerouteTab = btn.dataset.tab || 'reroutr';
+                        Array.from(rr.querySelectorAll('.tab')).forEach(function (b) { b.classList.remove('active'); });
+                        btn.classList.add('active');
+                        listenReroutes();
+                    });
+                }
+            }
+
+            var unsubRoadA = null;
+            var unsubRoadB = null;
+            function listenRoadReports() {
+                if (unsubRoadA) { try { unsubRoadA(); } catch (e) {} unsubRoadA = null; }
+                if (unsubRoadB) { try { unsubRoadB(); } catch (e) {} unsubRoadB = null; }
+                reports = [];
+                var merged = new Map();
+                function updateFromSnapshot(snap, colName) {
+                    snap.forEach(function (doc) {
+                        var d = doc.data() || {};
+                        d.id = doc.id;
+                        d.__collection__ = colName;
+                        merged.set(colName + ':' + doc.id, d);
+                    });
+                    reports = Array.from(merged.values());
+                    reports.sort(function (a, b) {
+                        var at = safeStr(a.timestamp || a.created_at || a.createdAt || '');
+                        var bt = safeStr(b.timestamp || b.created_at || b.createdAt || '');
+                        if (bt !== at) return bt.localeCompare(at);
+                        return safeStr(a.location).localeCompare(safeStr(b.location));
+                    });
+                    renderReports();
+                }
+                unsubRoadA = db.collection('road_reports').onSnapshot(function (snap) { updateFromSnapshot(snap, 'road_reports'); }, function () {});
+                unsubRoadB = db.collection('road_report').onSnapshot(function (snap) { updateFromSnapshot(snap, 'road_report'); }, function () {});
+            }
+
+            var unsubReroute = null;
+            function listenReroutes() {
+                if (unsubReroute) { try { unsubReroute(); } catch (e) {} unsubReroute = null; }
+                reroutes = [];
+                var col = activeRerouteTab === 'route_suggestion' ? 'route_suggestion' : 'reroutr';
+                unsubReroute = db.collection(col).onSnapshot(function (snap) {
+                    var items = [];
+                    snap.forEach(function (doc) {
+                        var d = doc.data() || {};
+                        d.id = doc.id;
+                        items.push(d);
+                    });
+                    items.sort(function (a, b) {
+                        var ad = safeStr(a.date || '');
+                        var bd = safeStr(b.date || '');
+                        if (bd !== ad) return bd.localeCompare(ad);
+                        var at = safeStr(a.generated_at || a.generatedAt || a.updated_at || a.updatedAt || '');
+                        var bt = safeStr(b.generated_at || b.generatedAt || b.updated_at || b.updatedAt || '');
+                        if (bt !== at) return bt.localeCompare(at);
+                        return safeStr(a.route_name || a.routeName).localeCompare(safeStr(b.route_name || b.routeName));
+                    });
+                    reroutes = items;
+                    renderReroutes();
+                }, function () {});
+            }
+
+            function setProcessStatus(text, kind) {
+                if (!processStatus) return;
+                processStatus.style.display = 'block';
+                processStatus.textContent = text;
+                processStatus.className = 'status' + (kind ? (' ' + kind) : '');
+            }
+
+            function setWorkflowStatus(text, kind) {
+                if (!workflowStatus) return;
+                workflowStatus.style.display = 'block';
+                workflowStatus.textContent = text;
+                workflowStatus.className = 'status' + (kind ? (' ' + kind) : '');
+            }
+
+            function renderTrace(trace) {
+                if (!aiTraceBox || !aiTraceText) return;
+                if (!trace || typeof trace !== 'object') {
+                    aiTraceBox.style.display = 'none';
+                    return;
+                }
+                var lines = [];
+                var inputs = trace.inputs || {};
+                lines.push('Inputs');
+                lines.push('- items_count: ' + safeStr(inputs.items_count));
+                lines.push('- reports_count: ' + safeStr(inputs.reports_count));
+                lines.push('- matched_points: ' + safeStr(inputs.matched_points));
+                lines.push('- alpha: ' + safeStr(inputs.alpha));
+                lines.push('- issue_penalty: ' + safeStr(inputs.issue_penalty));
+                lines.push('- heuristic: ' + safeStr(inputs.heuristic));
+                lines.push('');
+
+                var pts = Array.isArray(trace.points) ? trace.points.slice() : [];
+                if (pts.length) {
+                    pts.sort(function (a, b) { return (Number(a.original_order) || 0) - (Number(b.original_order) || 0); });
+                    lines.push('Scoring per drop-off point');
+                    pts.forEach(function (p) {
+                        var nm = safeStr(p.location_name);
+                        var sc = Number(p.score || 0);
+                        var issue = p.has_issue ? 'issue' : 'ok';
+                        lines.push('- ' + nm + ' | score=' + sc.toFixed(1) + ' | ' + issue);
+                    });
+                    lines.push('');
+                }
+
+                var steps = Array.isArray(trace.steps) ? trace.steps : [];
+                if (steps.length) {
+                    lines.push('Decision steps');
+                    steps.forEach(function (s, idx) {
+                        if (s.type === 'start') {
+                            lines.push((idx + 1) + ') start at ' + safeStr(s.selected) + ' (' + safeStr(s.reason) + ')');
+                            return;
+                        }
+                        if (s.type === 'step') {
+                            lines.push((idx + 1) + ') from ' + safeStr(s.from) + ' → pick ' + safeStr(s.selected) +
+                                ' | dist_km=' + safeStr(s.selected_distance_km) + ' | cost=' + safeStr(s.selected_cost));
+                            var cands = Array.isArray(s.candidates) ? s.candidates : [];
+                            cands.slice(0, 3).forEach(function (c) {
+                                lines.push('   - candidate ' + safeStr(c.to) +
+                                    ' | dist=' + safeStr(c.distance_km) +
+                                    ' | penalty=' + safeStr(c.penalty) +
+                                    ' | score=' + safeStr(c.score) +
+                                    ' | cost=' + safeStr(c.cost));
+                            });
+                        }
+                    });
+                }
+
+                aiTraceText.textContent = lines.join('\n') || '—';
+                aiTraceBox.style.display = 'block';
+            }
+
+            function setPicked(label) {
+                if (!workflowPicked) return;
+                workflowPicked.textContent = label || 'Pick a report';
+            }
+
+            function loadRoutesForWorkflow() {
+                if (!workflowRouteSelect) return;
+                fetch('/api/routes/')
+                    .then(r => r.ok ? r.json() : Promise.reject(new Error('routes')))
+                    .then(routes => {
+                        routes = Array.isArray(routes) ? routes : [];
+                        workflowRouteSelect.innerHTML = '';
+                        var main = null;
+                        routes.forEach(function (rt) {
+                            var opt = document.createElement('option');
+                            opt.value = String(rt.id);
+                            opt.textContent = safeStr(rt.name || ('Route ' + rt.id));
+                            workflowRouteSelect.appendChild(opt);
+                            if (safeStr(rt.name).toLowerCase() === 'main route') main = rt;
+                        });
+                        var pick = main || routes[0] || null;
+                        if (pick) {
+                            workflowRouteSelect.value = String(pick.id);
+                            selectedRoute = { id: String(pick.id), name: safeStr(pick.name || 'Main Route') };
+                            loadPointsForWorkflow();
+                        }
+                    })
+                    .catch(function () {});
+            }
+
+            function loadPointsForWorkflow() {
+                if (!workflowLocationSelect || !selectedRoute.id) return;
+                workflowLocationSelect.innerHTML = '<option value="">Select location…</option>';
+                fetch('/api/routes/' + encodeURIComponent(selectedRoute.id) + '/points/')
+                    .then(r => r.ok ? r.json() : Promise.reject(new Error('points')))
+                    .then(points => {
+                        points = Array.isArray(points) ? points : [];
+                        points.sort(function (a, b) { return (Number(a.order) || 0) - (Number(b.order) || 0); });
+                        points.forEach(function (p) {
+                            var nm = safeStr(p.location_details && p.location_details.name ? p.location_details.name : '');
+                            if (!nm) return;
+                            var opt = document.createElement('option');
+                            opt.value = nm;
+                            opt.textContent = nm;
+                            workflowLocationSelect.appendChild(opt);
+                        });
+                        if (selectedLocation) {
+                            workflowLocationSelect.value = selectedLocation;
+                        }
+                    })
+                    .catch(function () {});
+            }
+
+            if (workflowRouteSelect) {
+                workflowRouteSelect.addEventListener('change', function () {
+                    selectedRoute = { id: safeStr(workflowRouteSelect.value), name: safeStr(workflowRouteSelect.options[workflowRouteSelect.selectedIndex].textContent || '') };
+                    previewReady = false;
+                    if (approveBtn) approveBtn.disabled = true;
+                    loadPointsForWorkflow();
+                });
+            }
+
+            if (workflowLocationSelect) {
+                workflowLocationSelect.addEventListener('change', function () {
+                    selectedLocation = safeStr(workflowLocationSelect.value || '').trim();
+                    if (selectedLocation) setPicked('Selected: ' + selectedLocation);
+                    previewReady = false;
+                    if (approveBtn) approveBtn.disabled = true;
+                });
+            }
+
+            if (reportsList) {
+                reportsList.addEventListener('click', function (e) {
+                    var li = e.target && e.target.closest ? e.target.closest('li[data-location]') : null;
+                    if (!li) return;
+                    var loc = safeStr(li.getAttribute('data-location') || '').trim();
+                    if (!loc) return;
+                    selectedLocation = loc;
+                    setPicked('Selected: ' + loc);
+                    if (workflowLocationSelect) workflowLocationSelect.value = loc;
+                    previewReady = false;
+                    if (approveBtn) approveBtn.disabled = true;
+                });
+            }
+
+            if (previewBtn) {
+                previewBtn.addEventListener('click', function () {
+                    if (!selectedRoute.id) {
+                        setWorkflowStatus('No route selected.', 'err');
+                        return;
+                    }
+                    setWorkflowStatus('Generating reroute preview…', '');
+                    if (aiTraceBox) aiTraceBox.style.display = 'block';
+                    if (aiTraceText) aiTraceText.textContent = 'Loading…';
+                    fetch('/api/routes/' + encodeURIComponent(selectedRoute.id) + '/optimize/?explain=1&mirror=0', { method: 'GET' })
+                        .then(async (r) => {
+                            var txt = await r.text();
+                            if (!r.ok) throw new Error(txt || 'Request failed');
+                            try { return JSON.parse(txt); } catch (e) { throw new Error('Invalid JSON response'); }
+                        })
+                        .then((data) => {
+                            previewReady = true;
+                            if (approveBtn) approveBtn.disabled = false;
+                            setWorkflowStatus('AI computed. If okay, approve to notify mobile.', 'ok');
+                            renderTrace(data && data.trace ? data.trace : null);
+                            activeRerouteTab = 'reroutr';
+                            listenReroutes();
+                        })
+                        .catch((e) => {
+                            if (aiTraceBox) aiTraceBox.style.display = 'block';
+                            if (aiTraceText) aiTraceText.textContent = 'Failed to load AI trace.\n' + safeStr(e && e.message ? e.message : e);
+                            setWorkflowStatus('Failed to run AI.', 'err');
+                        });
+                });
+            }
+
+            if (approveBtn) {
+                approveBtn.addEventListener('click', function () {
+                    if (!previewReady) {
+                        setWorkflowStatus('Generate preview first.', 'err');
+                        return;
+                    }
+                    setWorkflowStatus('Sending notifications to mobile…', '');
+                    var loc = selectedLocation || 'multiple locations';
+                    var url = '/api/approve-reroute/?route_id=' + encodeURIComponent(selectedRoute.id) +
+                        '&route_name=' + encodeURIComponent(selectedRoute.name || 'Main Route') +
+                        '&location_name=' + encodeURIComponent(loc);
+                    fetch(url, { method: 'GET' })
+                        .then(r => r.ok ? r.json() : Promise.reject(new Error('approve')))
+                        .then(data => {
+                            var webCnt = data && data.web_notifications_created != null ? String(data.web_notifications_created) : '—';
+                            var pushCnt = data && data.push_notifications_sent != null ? String(data.push_notifications_sent) : '—';
+                            setWorkflowStatus('Approved. Web notifications: ' + webCnt + ' • Push sent: ' + pushCnt, 'ok');
+                        })
+                        .catch(() => setWorkflowStatus('Failed to send notifications.', 'err'));
+                });
+            }
+
+            if (rerouteList) {
+                rerouteList.addEventListener('click', function (e) {
+                    var li = e.target && e.target.closest ? e.target.closest('li[data-rid]') : null;
+                    if (!li) return;
+                    var id = li.getAttribute('data-rid');
+                    var item = reroutes.find(function (x) { return safeStr(x.id) === safeStr(id); });
+                    if (!item || !rerouteDetails) return;
+                    var pts = item.suggested_points || item.suggestedPoints;
+                    var names = [];
+                    if (Array.isArray(pts)) {
+                        var arr = pts.slice();
+                        arr.sort(function (a, b) { return (Number(a.order) || 0) - (Number(b.order) || 0); });
+                        names = arr.map(function (p) { return safeStr(p.location_name || p.locationName || p.name || p.location || ''); }).filter(Boolean);
+                    }
+                    if (!names.length) {
+                        rerouteDetails.style.display = 'block';
+                        rerouteDetails.textContent = 'No suggested points found for this reroute.';
+                        return;
+                    }
+                    rerouteDetails.style.display = 'block';
+                    rerouteDetails.textContent = 'Suggested order: ' + names.join(' → ');
+                });
+            }
+
+            loadRoutesForWorkflow();
+            attachTabHandlers();
+            listenRoadReports();
+            listenReroutes();
+        })();
+    </script>
+</body>
+</html>

@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login as django_login, logout as django_logout
 from django.conf import settings 
 import json
+import os
 from .models import Resident
 from userprofile.models import UserProfile
 from userprofile.forms import UserEditForm, UserProfileForm
@@ -45,6 +46,7 @@ from .ai_predictor import GarbageRoutePredictor
 from .firebase_sync import (
     sync_prediction_to_firestore, 
     sync_scheduling_assistance_to_firestore,
+    fetch_scheduling_assistance_items,
     fetch_road_reports,
     mark_road_report_processed,
     create_firestore_notification,
@@ -155,8 +157,10 @@ class RouteViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def optimize(self, request, pk=None):
         route = self.get_object()
+        explain = str(request.query_params.get('explain', '') or '').strip().lower() in ('1', 'true', 'yes')
+        mirror = str(request.query_params.get('mirror', '') or '').strip().lower() not in ('0', 'false', 'no')
         try:
-            result = ai_predictor.optimize_route_by_garbage_level(route.id)
+            result = ai_predictor.optimize_route_by_garbage_level(route.id, explain=explain, mirror=mirror)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(result)
@@ -202,6 +206,21 @@ class RouteViewSet(viewsets.ModelViewSet):
         end_str = pred['predicted_end_time'].strftime('%H:%M')
         confidence = float(pred.get('confidence_score', 0.0))
         factors = pred.get('factors', {})
+        points = RoutePoint.objects.filter(route=route).order_by('order').select_related('location')
+        etas = []
+        cum = 0
+        start_tm = pred['predicted_start_time']
+        for p in points:
+            eta_hour = (start_tm.hour * 60 + start_tm.minute + cum) // 60
+            eta_min = (start_tm.hour * 60 + start_tm.minute + cum) % 60
+            eta_str = f"{int(eta_hour)%24:02d}:{int(eta_min):02d}"
+            etas.append({
+                'point_id': p.id,
+                'location_name': p.location.name,
+                'order': p.order,
+                'eta': eta_str,
+            })
+            cum += int(p.estimated_time_minutes or 5)
         mirrored = False
         try:
             mirrored = bool(
@@ -213,6 +232,7 @@ class RouteViewSet(viewsets.ModelViewSet):
                     predicted_end_time=end_str,
                     confidence_score=confidence,
                     factors=factors,
+                    etas=etas,
                 )
             )
         except Exception:
@@ -226,6 +246,7 @@ class RouteViewSet(viewsets.ModelViewSet):
             'predicted_end': end_str,
             'confidence': confidence,
             'factors': factors,
+            'etas': etas,
         })
 
 class RoutePointViewSet(viewsets.ModelViewSet):
@@ -726,6 +747,9 @@ def check_road_reports(request):
     
     processed_count = 0
     notifications_sent = 0
+    admin_users = (User.objects.filter(is_staff=True) | User.objects.filter(is_superuser=True)).distinct()
+    collectors = GarbageCollector.objects.all()
+    affected_locations = []
     
     # Process each report
     for report in reports:
@@ -760,7 +784,6 @@ def check_road_reports(request):
                     pass
         
         # 3. Notify Drivers (Garbage Collectors)
-        collectors = GarbageCollector.objects.all()
         for collector in collectors:
             # Web Notification
             Notification.objects.create(
@@ -789,8 +812,19 @@ def check_road_reports(request):
                             )
                 except Exception as e:
                     print(f"Error notifying driver {collector}: {e}")
+
+        for admin in admin_users:
+            try:
+                Notification.objects.create(
+                    user=admin,
+                    type='change',
+                    title=title,
+                    message=body
+                )
+            except Exception:
+                pass
         
-        notifications_sent += residents.count() + collectors.count()
+        notifications_sent += residents.count() + collectors.count() + admin_users.count()
 
         # 4. Mirror notification to Firestore 'notifications' collection
         create_firestore_notification(
@@ -809,19 +843,68 @@ def check_road_reports(request):
             disruption_type="road_report",
             location_name=loc_name,
         )
+        create_firestore_notification(
+            title=title,
+            body=body,
+            target="admin",
+            route_id=None,
+            disruption_type="road_report",
+            location_name=loc_name,
+        )
         
         # Mark as processed in the originating collection
         if report_id:
             mark_road_report_processed(report_id, report_collection)
         processed_count += 1
+        if loc_name and loc_name not in affected_locations:
+            affected_locations.append(str(loc_name))
 
     # 3. Trigger Reroute for all routes
     routes = Route.objects.all()
     optimized_routes = []
+    loc_label = ", ".join(affected_locations) if affected_locations else "reported road issue"
     for route in routes:
         try:
             res = ai_predictor.optimize_route_by_garbage_level(route.id)
             optimized_routes.append(res.get('route_name'))
+            reroute_title = f"Route Rerouted: {route.name}"
+            reroute_body = f"New alternative path generated due to road report near {loc_label}."
+            create_firestore_notification(
+                title=reroute_title,
+                body=reroute_body,
+                target="collectors",
+                route_id=route.id,
+                disruption_type="reroute",
+                location_name=loc_label,
+            )
+            create_firestore_notification(
+                title=reroute_title,
+                body=reroute_body,
+                target="admin",
+                route_id=route.id,
+                disruption_type="reroute",
+                location_name=loc_label,
+            )
+            for collector in collectors:
+                try:
+                    Notification.objects.create(
+                        user=collector.user,
+                        type='change',
+                        title=reroute_title,
+                        message=reroute_body
+                    )
+                except Exception:
+                    pass
+            for admin in admin_users:
+                try:
+                    Notification.objects.create(
+                        user=admin,
+                        type='change',
+                        title=reroute_title,
+                        message=reroute_body
+                    )
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -830,6 +913,111 @@ def check_road_reports(request):
         'reports_count': processed_count,
         'notifications_sent': notifications_sent,
         'rerouted_routes': optimized_routes
+    })
+
+@api_view(['POST', 'GET'])
+def approve_reroute(request):
+    data = request.data if request.method == 'POST' else request.query_params
+    route_id = data.get('route_id') or data.get('routeId')
+    try:
+        route_id_int = int(route_id)
+    except Exception:
+        route_id_int = None
+    route_name = data.get('route_name') or data.get('routeName') or 'Main Route'
+    location_name = data.get('location_name') or data.get('locationName') or data.get('location') or 'multiple locations'
+
+    title = f"Route Rerouted: {route_name}"
+    body = f"New route approved due to road report near {location_name}. Please follow the updated path."
+
+    residents = Resident.objects.filter(notification_enabled=True)
+    collectors = GarbageCollector.objects.all()
+    admin_users = (User.objects.filter(is_staff=True) | User.objects.filter(is_superuser=True)).distinct()
+
+    created_web = 0
+    pushed = 0
+
+    for res in residents:
+        try:
+            Notification.objects.create(user=res.user, type='change', title=title, message=body)
+            created_web += 1
+        except Exception:
+            pass
+        if res.fcm_token and firebase_manager:
+            try:
+                if firebase_manager.send_push_notification(
+                    token=res.fcm_token,
+                    title=title,
+                    body=body,
+                    data={'type': 'reroute', 'route_id': str(route_id_int or ''), 'location': str(location_name)},
+                ):
+                    pushed += 1
+            except Exception:
+                pass
+
+    for collector in collectors:
+        try:
+            Notification.objects.create(user=collector.user, type='change', title=title, message=body)
+            created_web += 1
+        except Exception:
+            pass
+        if firebase_manager and firestore:
+            try:
+                db = firestore.client()
+                doc_ref = db.collection('collectors').document(collector.user.username)
+                doc = doc_ref.get()
+                if doc.exists:
+                    d = doc.to_dict() or {}
+                    token = d.get('fcmToken') or d.get('fcm_token')
+                    if token:
+                        if firebase_manager.send_push_notification(
+                            token=token,
+                            title=title,
+                            body=body,
+                            data={'type': 'reroute', 'route_id': str(route_id_int or ''), 'location': str(location_name)},
+                        ):
+                            pushed += 1
+            except Exception:
+                pass
+
+    for admin in admin_users:
+        try:
+            Notification.objects.create(user=admin, type='change', title=title, message=body)
+            created_web += 1
+        except Exception:
+            pass
+
+    create_firestore_notification(
+        title=title,
+        body=body,
+        target="residents",
+        route_id=route_id_int,
+        disruption_type="reroute",
+        location_name=str(location_name),
+    )
+    create_firestore_notification(
+        title=title,
+        body=body,
+        target="collectors",
+        route_id=route_id_int,
+        disruption_type="reroute",
+        location_name=str(location_name),
+    )
+    create_firestore_notification(
+        title=title,
+        body=body,
+        target="admin",
+        route_id=route_id_int,
+        disruption_type="reroute",
+        location_name=str(location_name),
+    )
+
+    return Response({
+        'status': 'ok',
+        'route_id': route_id_int,
+        'route_name': route_name,
+        'location_name': location_name,
+        'web_notifications_created': created_web,
+        'push_notifications_sent': pushed,
     })
 
 
@@ -918,7 +1106,22 @@ def logout_view(request):
 # The other views remain unchanged
 @login_required
 def dashboard(request):
-    return render(request, 'dashboard.html', {})
+    route = Route.objects.filter(name__iexact='Main Route').first() or Route.objects.first()
+    route_points = []
+    route_id = None
+    if route:
+        route_id = route.id
+        pts = RoutePoint.objects.filter(route=route).order_by('order').select_related('location')
+        for p in pts:
+            route_points.append({
+                'order': p.order,
+                'location_name': p.location.name,
+            })
+    context = {
+        'route_points_json': json.dumps(route_points),
+        'route_id': route_id,
+    }
+    return render(request, 'dashboard.html', context)
 
 @login_required
 def track_trucks_view(request):
@@ -949,11 +1152,191 @@ def settings_view(request):
 
 @login_required
 def garbage_level_view(request):
-    return render(request, 'garbage_level.html')
+    route = Route.objects.filter(name__iexact='Main Route').first() or Route.objects.first()
+    route_points = []
+    if route:
+        pts = RoutePoint.objects.filter(route=route).order_by('order').select_related('location')
+        for p in pts:
+            route_points.append({
+                'order': p.order,
+                'location_name': p.location.name,
+            })
+    context = {
+        'route_points_json': json.dumps(route_points),
+    }
+    return render(request, 'garbage_level.html', context)
+
+@login_required
+def road_map_view(request):
+    app_id = settings.FIREBASE_CLIENT_CONFIG.get('projectId', 'g-trackapp')
+    firebase_config_json = json.dumps(settings.FIREBASE_CLIENT_CONFIG)
+    context = {
+        'active_tab': 'road_map',
+        'firebase_config_json': firebase_config_json,
+        'app_id': app_id,
+    }
+    return render(request, 'road_map.html', context)
+
+@login_required
+def history_view(request):
+    app_id = settings.FIREBASE_CLIENT_CONFIG.get('projectId', 'g-trackapp')
+    firebase_config_json = json.dumps(settings.FIREBASE_CLIENT_CONFIG)
+    context = {
+        'active_tab': 'history',
+        'firebase_config_json': firebase_config_json,
+        'app_id': app_id,
+    }
+    return render(request, 'history.html', context)
 
 @login_required
 def schedules_view(request):
-    return render(request, 'schedules.html')
+    """
+    Renders the schedules page.
+    Shows the weekly template (CollectionSchedule) and recent AI predictions.
+    """
+    schedules = CollectionSchedule.objects.all().order_by('day_of_week', 'start_time')
+    target_names = {
+        'sitio 6 basketball court',
+        'gulayan',
+        'sm hoa',
+        'lucas compound',
+        'justice',
+        'dumpsite',
+    }
+    resident_route = Route.objects.filter(name__iexact='Main Route').first()
+    if not resident_route:
+        best = None
+        best_score = -1
+        for r in Route.objects.all():
+            pts = r.points.select_related('location').all()
+            score = 0
+            for p in pts:
+                nm = (p.location.name or '').strip().lower()
+                if nm in target_names:
+                    score += 1
+            if score > best_score:
+                best, best_score = r, score
+        resident_route = best or Route.objects.first()
+    route_points = []
+    resident_route_id = None
+    if resident_route:
+        resident_route_id = resident_route.id
+        pts = RoutePoint.objects.filter(route=resident_route).order_by('order').select_related('location')
+        for p in pts:
+            route_points.append({
+                'point_id': p.id,
+                'order': p.order,
+                'location_name': p.location.name,
+                'latitude': p.location.latitude,
+                'longitude': p.location.longitude,
+            })
+    # Auto-refresh today's+upcoming schedules once per day using Firestore-backed history
+    try:
+        allow_auto = os.getenv('AUTO_REFRESH_AI', 'true').lower() in ('1', 'true', 'yes')
+        if allow_auto:
+            today = datetime.today().date()
+            last_key = 'ai_sched_last_refresh'
+            last_val = cache.get(last_key)
+            if last_val != today.isoformat():
+                days = int(os.getenv('AUTO_REFRESH_AI_DAYS', '7'))
+                for route in Route.objects.all():
+                    points = RoutePoint.objects.filter(route=route).order_by('order').select_related('location')
+                    for i in range(days):
+                        target_date = today + timedelta(days=i)
+                        pred = ai_predictor.predict_route_schedule(route.id, target_date)
+                        if pred:
+                            start_str = pred['predicted_start_time'].strftime('%H:%M')
+                            end_str = pred['predicted_end_time'].strftime('%H:%M')
+                            confidence = float(pred.get('confidence_score', 0.0))
+                            factors = pred.get('factors', {})
+                            etas = []
+                            cum = 0
+                            start_tm = pred['predicted_start_time']
+                            for p in points:
+                                eta_hour = (start_tm.hour * 60 + start_tm.minute + cum) // 60
+                                eta_min = (start_tm.hour * 60 + start_tm.minute + cum) % 60
+                                eta_str = f"{int(eta_hour)%24:02d}:{int(eta_min):02d}"
+                                etas.append({
+                                    'point_id': p.id,
+                                    'location_name': p.location.name,
+                                    'order': p.order,
+                                    'eta': eta_str,
+                                })
+                                cum += int(p.estimated_time_minutes or 5)
+                            try:
+                                sync_scheduling_assistance_to_firestore(
+                                    route_id=route.id,
+                                    route_name=route.name,
+                                    assistance_date=target_date,
+                                    predicted_start_time=start_str,
+                                    predicted_end_time=end_str,
+                                    confidence_score=confidence,
+                                    factors=factors,
+                                    etas=etas,
+                                )
+                            except Exception:
+                                pass
+                cache.set(last_key, today.isoformat(), 60 * 60 * 24)
+    except Exception:
+        pass
+    today = datetime.today().date()
+    end_date = today + timedelta(days=30)
+    firestore_items = fetch_scheduling_assistance_items(start_date=today, end_date=end_date)
+    predictions = []
+    if firestore_items:
+        for it in firestore_items:
+            route_name = it.get('route_name') or it.get('routeName')
+            predictions.append({
+                'route_name': route_name,
+                'route_id': it.get('route_id') or it.get('routeId'),
+                'date': it.get('date'),
+                'predicted_start': it.get('predicted_start') or it.get('predictedStart'),
+                'predicted_end': it.get('predicted_end') or it.get('predictedEnd'),
+                'confidence': it.get('confidence'),
+                'factors': it.get('factors') or {},
+                'updated_at': it.get('updated_at') or it.get('updatedAt'),
+                'source': 'firestore.scheduling_assistance',
+            })
+        predictions.sort(key=lambda x: (str(x.get('date') or ''), str(x.get('predicted_start') or ''), str(x.get('route_name') or '')))
+    else:
+        qs = AIRoutePrediction.objects.filter(date__gte=today).select_related('route').order_by('date', 'predicted_start_time')
+        for p in qs:
+            predictions.append({
+                'route_name': p.route.name if getattr(p, 'route', None) else None,
+                'route_id': p.route_id,
+                'date': p.date.isoformat() if p.date else None,
+                'predicted_start': p.predicted_start_time.strftime('%H:%M') if p.predicted_start_time else None,
+                'predicted_end': p.predicted_end_time.strftime('%H:%M') if p.predicted_end_time else None,
+                'confidence': p.confidence_score,
+                'factors': p.factors or {},
+                'updated_at': None,
+                'source': 'sql.ai_route_prediction',
+            })
+    
+    app_id = settings.FIREBASE_CLIENT_CONFIG.get('projectId', 'g-trackapp')
+    firebase_config_json = json.dumps(settings.FIREBASE_CLIENT_CONFIG)
+    context = {
+        'schedules': schedules,
+        'predictions': predictions,
+        'active_tab': 'resident_schedules',
+        'firebase_config_json': firebase_config_json,
+        'app_id': app_id,
+        'resident_route_id': resident_route_id,
+        'resident_route_points_json': json.dumps(route_points),
+    }
+    return render(request, 'schedules.html', context)
+
+
+@login_required
+def collector_schedules_view(request):
+    app_id = settings.FIREBASE_CLIENT_CONFIG.get('projectId', 'g-trackapp')
+    firebase_config_json = json.dumps(settings.FIREBASE_CLIENT_CONFIG)
+    context = {
+        'active_tab': 'collector_schedules',
+        'firebase_config_json': firebase_config_json,
+        'app_id': app_id,
+    }
+    return render(request, 'collector_schedules.html', context)
 
 @login_required
 def notification_view(request):

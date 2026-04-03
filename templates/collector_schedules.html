@@ -1,0 +1,262 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collector Schedules</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0; }
+        .main { padding: 40px 20px; max-width: 1200px; margin: 0 auto; }
+        h1 { color: #1f4f0c; font-size: 2.2em; margin-bottom: 14px; }
+        .card { background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 24px; border: 1px solid #eef2f7; }
+        .week-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-top: 14px; }
+        .day-btn { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; border: 1px solid #eef2f7; background: #fafafa; cursor: pointer; text-align: left; }
+        .day-btn:hover { background: #f3f4f6; }
+        .day-btn.active { background: #e5f5e0; border-color: #bfe6bf; }
+        .day-name { font-weight: 800; color: #111827; }
+        .day-date { font-weight: 700; color: #256b00; }
+        .muted { color: #6b7280; font-weight: 600; }
+        .details { margin-top: 14px; border-top: 1px solid #eef2f7; padding-top: 14px; }
+        .details-title { font-weight: 900; color: #1f4f0c; margin-bottom: 10px; }
+        .list { list-style: none; margin: 0; padding: 0; }
+        .item { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eee; }
+        .item:last-child { border-bottom: none; }
+        .left { display: flex; flex-direction: column; gap: 2px; }
+        .route { font-weight: 900; color: #111827; }
+        .meta { font-size: 0.9em; color: #6b7280; font-weight: 600; }
+        .right { font-weight: 900; color: #111827; white-space: nowrap; }
+        .pill { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 0.85em; font-weight: 800; background: #f3f4f6; color: #374151; }
+        .pill-scheduled { background: #e3f2fd; color: #1e88e5; }
+        .pill-done { background: #e5f5e0; color: #256b00; }
+        .pill-cancelled { background: #fee2e2; color: #991b1b; }
+        .week-controls { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
+        .week-label { font-weight: 900; color: #111827; }
+        .week-nav { display: flex; gap: 10px; }
+        .week-nav button { border: 1px solid #eef2f7; background: #fff; border-radius: 10px; padding: 8px 12px; cursor: pointer; font-weight: 800; }
+        .week-nav button:hover { background: #f3f4f6; }
+        @media (max-width: 900px) { .week-row { grid-template-columns: repeat(2, 1fr); } }
+    </style>
+</head>
+<body>
+    {% include 'partials/topbar.html' with active_tab='collector_schedules' %}
+
+    <div class="main">
+        <h1>Garbage Collectors Schedule</h1>
+        <div class="card">
+            <div class="muted">Click a date (Monday–Sunday) to view the schedule posted from mobile/database.</div>
+            <div class="week-controls">
+                <div class="week-label" id="weekLabel"></div>
+                <div class="week-nav">
+                    <button type="button" id="prevWeekBtn">Prev</button>
+                    <button type="button" id="todayBtn">Today</button>
+                    <button type="button" id="nextWeekBtn">Next</button>
+                </div>
+            </div>
+            <div class="week-row" id="weekRow"></div>
+            <div class="details">
+                <div class="details-title" id="detailsTitle">Schedule</div>
+                <ul class="list" id="schedList">
+                    <li class="item"><span class="muted">Loading…</span><span class="muted">—</span></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.__firebase_config = '{{ firebase_config_json|escapejs }}';
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script>
+        (function () {
+            function safeStr(v) { return (v === null || v === undefined) ? '' : String(v); }
+            function parseISODate(s) {
+                if (!s) return null;
+                var dt = new Date(s);
+                return isNaN(dt.getTime()) ? null : dt;
+            }
+            function withinWindow(iso, pastDays, futureDays) {
+                var d = parseISODate(iso);
+                if (!d) return false;
+                var now = new Date();
+                var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                var start = new Date(today.getTime() - (pastDays * 24 * 60 * 60 * 1000));
+                var end = new Date(today.getTime() + (futureDays * 24 * 60 * 60 * 1000));
+                return d >= start && d <= end;
+            }
+            function mondayOfWeek(dt) {
+                var d = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+                var day = d.getDay();
+                var diff = (day === 0 ? -6 : 1) - day;
+                d.setDate(d.getDate() + diff);
+                return d;
+            }
+            function fmtIso(dt) {
+                var y = dt.getFullYear();
+                var m = String(dt.getMonth() + 1).padStart(2, '0');
+                var d = String(dt.getDate()).padStart(2, '0');
+                return y + '-' + m + '-' + d;
+            }
+            function fmtDay(dt) {
+                return dt.toLocaleDateString(undefined, { weekday: 'short' });
+            }
+            function fmtPretty(dt) {
+                return dt.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
+            }
+            function pillClass(status) {
+                var s = safeStr(status).toLowerCase();
+                if (s === 'done' || s === 'completed') return 'pill pill-done';
+                if (s === 'cancelled' || s === 'canceled') return 'pill pill-cancelled';
+                return 'pill pill-scheduled';
+            }
+
+            var weekRow = document.getElementById('weekRow');
+            var schedList = document.getElementById('schedList');
+            var detailsTitle = document.getElementById('detailsTitle');
+            var weekLabel = document.getElementById('weekLabel');
+            var prevWeekBtn = document.getElementById('prevWeekBtn');
+            var nextWeekBtn = document.getElementById('nextWeekBtn');
+            var todayBtn = document.getElementById('todayBtn');
+
+            if (!weekRow || !schedList || !window.__firebase_config) return;
+            var cfg;
+            try { cfg = JSON.parse(window.__firebase_config); } catch (e) { return; }
+            try { firebase.initializeApp(cfg); } catch (e) {}
+            var db = firebase.firestore();
+
+            var byDate = {};
+            var selectedIso = null;
+            var PAST_DAYS = 180;
+            var FUTURE_DAYS = 30;
+            var weekStart = mondayOfWeek(new Date());
+            var FIXED_START = '06:00 AM';
+            var FIXED_END = '10:00 PM';
+
+            function renderListFor(iso) {
+                selectedIso = iso;
+                if (detailsTitle) detailsTitle.textContent = 'Schedule for ' + iso;
+                var map = byDate[iso] || {};
+                schedList.innerHTML = '';
+                var items = [];
+                if (map['1']) items.push(map['1']);
+                if (map['2']) items.push(map['2']);
+                if (!items.length) {
+                    schedList.innerHTML = '<li class="item"><span class="muted">No collector schedules posted.</span><span class="muted">—</span></li>';
+                    return;
+                }
+                items.forEach(function (it) {
+                    var li = document.createElement('li');
+                    li.className = 'item';
+
+                    var left = document.createElement('div');
+                    left.className = 'left';
+                    var route = document.createElement('div');
+                    route.className = 'route';
+                    route.textContent = safeStr(it.routeName || it.route_name || 'Route');
+                    var meta = document.createElement('div');
+                    meta.className = 'meta';
+                    meta.textContent = 'Collector: ' + safeStr(it.collectorId || it.collector_id || '-') + ' • Task: ' + safeStr(it.task || 'Garbage Collection');
+                    left.appendChild(route);
+                    left.appendChild(meta);
+
+                    var right = document.createElement('div');
+                    right.className = 'right';
+                    var time = FIXED_START + ' - ' + FIXED_END;
+                    var status = document.createElement('span');
+                    status.className = pillClass(it.status);
+                    status.textContent = safeStr(it.status || 'scheduled');
+                    right.innerHTML = '';
+                    var timeEl = document.createElement('div');
+                    timeEl.textContent = time.trim() ? time : '—';
+                    right.appendChild(timeEl);
+                    right.appendChild(status);
+
+                    li.appendChild(left);
+                    li.appendChild(right);
+                    schedList.appendChild(li);
+                });
+            }
+
+            function renderWeek() {
+                weekRow.innerHTML = '';
+                var mon = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
+                var isoDates = [];
+                for (var i = 0; i < 7; i++) {
+                    var dt = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i);
+                    isoDates.push(fmtIso(dt));
+                }
+                if (weekLabel) {
+                    var end = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+                    weekLabel.textContent = fmtPretty(mon) + ' - ' + fmtPretty(end) + ' (' + fmtIso(mon) + ' to ' + fmtIso(end) + ')';
+                }
+                isoDates.forEach(function (iso, idx) {
+                    var dt = parseISODate(iso) || new Date();
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    var isActive = selectedIso ? (selectedIso === iso) : (idx === 0);
+                    btn.className = 'day-btn' + (isActive ? ' active' : '');
+                    btn.dataset.iso = iso;
+                    var n = document.createElement('div');
+                    n.className = 'day-name';
+                    n.textContent = fmtDay(dt);
+                    var d = document.createElement('div');
+                    d.className = 'day-date';
+                    d.textContent = fmtPretty(dt) + ' (' + iso + ')';
+                    btn.appendChild(n);
+                    btn.appendChild(d);
+                    btn.addEventListener('click', function () {
+                        var all = weekRow.querySelectorAll('.day-btn');
+                        all.forEach(function (x) { x.classList.remove('active'); });
+                        btn.classList.add('active');
+                        renderListFor(btn.dataset.iso);
+                    });
+                    weekRow.appendChild(btn);
+                });
+                if (!selectedIso || isoDates.indexOf(selectedIso) === -1) {
+                    renderListFor(isoDates[0]);
+                } else {
+                    renderListFor(selectedIso);
+                }
+            }
+
+            if (prevWeekBtn) {
+                prevWeekBtn.addEventListener('click', function () {
+                    weekStart.setDate(weekStart.getDate() - 7);
+                    renderWeek();
+                });
+            }
+            if (nextWeekBtn) {
+                nextWeekBtn.addEventListener('click', function () {
+                    weekStart.setDate(weekStart.getDate() + 7);
+                    renderWeek();
+                });
+            }
+            if (todayBtn) {
+                todayBtn.addEventListener('click', function () {
+                    weekStart = mondayOfWeek(new Date());
+                    selectedIso = fmtIso(new Date());
+                    renderWeek();
+                });
+            }
+            renderWeek();
+
+            db.collection('collector_schedules').onSnapshot(function (snap) {
+                byDate = {};
+                snap.forEach(function (doc) {
+                    var d = doc.data() || {};
+                    var iso = safeStr(d.date);
+                    if (!iso) return;
+                    if (!withinWindow(iso, PAST_DAYS, FUTURE_DAYS)) return;
+                    var cid = safeStr(d.collectorId || d.collector_id || '').trim();
+                    if (cid !== '1' && cid !== '2') return;
+                    if (!byDate[iso]) byDate[iso] = {};
+                    byDate[iso][cid] = d;
+                });
+                if (selectedIso) renderListFor(selectedIso);
+            }, function () {});
+        })();
+    </script>
+</body>
+</html>

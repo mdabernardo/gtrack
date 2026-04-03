@@ -44,6 +44,9 @@ urlpatterns = [
     path('help/', views.help_view, name='help'),
     path('settings/', views.settings_view, name='settings'),
     path('garbage-level/', views.garbage_level_view, name='garbage_level'),
+    path('road-map/', views.road_map_view, name='road_map'),
+    path('history/', views.history_view, name='history'),
+    path('collector-schedules/', views.collector_schedules_view, name='collector_schedules'),
     path('schedules/', views.schedules_view, name='schedules'),
     path('notification/', views.notification_view, name='notification'),
     path('warning/', views.warning_view, name='warning'),
@@ -74,6 +77,7 @@ urlpatterns = [
     path('api/sync-predictions/', views.sync_predictions_to_firebase, name='sync_predictions'),
     path('api/routes/recompute_all/', views.recompute_all_routes, name='recompute_all_routes'),
     path('api/check-road-reports/', views.check_road_reports, name='check_road_reports'),
+    path('api/approve-reroute/', views.approve_reroute, name='approve_reroute'),
 
     # You can likely remove or comment out this line as you're now using custom views
     

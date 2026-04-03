@@ -1,12 +1,438 @@
+{% load static %}
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>All Schedules</title>
-    {% load static %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTrack Collection Schedules</title>
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0; }
+        .main { padding: 40px 20px; max-width: 1200px; margin: 0 auto; }
+        h1 { color: #1f4f0c; font-size: 2.2em; margin-bottom: 30px; }
+        .schedule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-bottom: 40px; }
+        .schedule-card { background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 24px; border: 1px solid #eef2f7; }
+        .schedule-card h2 { color: #32a000; font-size: 1.4em; margin-top: 0; border-bottom: 2px solid #f1f1f1; padding-bottom: 12px; }
+        .schedule-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        .schedule-table th, .schedule-table td { text-align: left; padding: 12px 8px; border-bottom: 1px solid #eee; }
+        .schedule-table th { color: #7f8c8d; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.5px; }
+        .day-badge { background: #e5f5e0; color: #256b00; padding: 4px 10px; border-radius: 999px; font-size: 0.85em; font-weight: 600; }
+        .time-text { font-weight: 600; color: #333; }
+        .empty-state { text-align: center; padding: 40px; background: #fff; border-radius: 12px; border: 2px dashed #ddd; color: #7f8c8d; }
+        .prediction-badge { background: #e3f2fd; color: #1e88e5; padding: 4px 10px; border-radius: 999px; font-size: 0.85em; font-weight: 600; }
+        .muted { color: #6b7280; font-weight: 600; }
+        .week-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-top: 14px; }
+        .day-btn { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; border: 1px solid #eef2f7; background: #fafafa; cursor: pointer; text-align: left; }
+        .day-btn:hover { background: #f3f4f6; }
+        .day-btn.active { background: #e5f5e0; border-color: #bfe6bf; }
+        .day-name { font-weight: 800; color: #111827; }
+        .day-date { font-weight: 700; color: #256b00; }
+        .details { margin-top: 14px; border-top: 1px solid #eef2f7; padding-top: 14px; }
+        .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .panel { background: #fff; border: 1px solid #eef2f7; border-radius: 12px; padding: 14px; }
+        .panel-title { font-weight: 900; color: #1f4f0c; margin-bottom: 10px; }
+        .eta-list { list-style: none; margin: 0; padding: 0; }
+        .eta-item { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eee; }
+        .eta-item:last-child { border-bottom: none; }
+        .eta-time { font-weight: 900; color: #111827; }
+        .week-controls { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
+        .week-label { font-weight: 900; color: #111827; }
+        .week-nav { display: flex; gap: 10px; }
+        .week-nav button { border: 1px solid #eef2f7; background: #fff; border-radius: 10px; padding: 8px 12px; cursor: pointer; font-weight: 800; }
+        .week-nav button:hover { background: #f3f4f6; }
+        @media (max-width: 900px) { .details-grid { grid-template-columns: 1fr; } }
+    </style>
 </head>
 <body>
-    <h1>All Schedules</h1>
-    <p>Display all schedules here!</p>
+    {% include 'partials/topbar.html' with active_tab='resident_schedules' %}
+    
+    <div class="main">
+        <h1>Garbage Collection Schedules</h1>
+        
+        <div class="schedule-grid">
+            <div class="schedule-card" style="grid-column: 1 / -1;">
+                <h2>Monday - Sunday (Select Date)</h2>
+                <div class="week-controls">
+                    <div class="week-label" id="weekLabel"></div>
+                    <div class="week-nav">
+                        <button type="button" id="prevWeekBtn">Prev</button>
+                        <button type="button" id="todayBtn">Today</button>
+                        <button type="button" id="nextWeekBtn">Next</button>
+                    </div>
+                </div>
+                <div class="week-row" id="weekRow"></div>
+                <div class="details">
+                    <div class="details-grid">
+                        <div class="panel">
+                            <div class="panel-title">Collection Window</div>
+                            <div class="time-text" id="predWindowText">Select a date.</div>
+                            <div class="muted" id="predMetaText"></div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-title">Resident Drop-off Schedule (6 Streets)</div>
+                            <ul class="eta-list" id="dropoffList">
+                                <li class="eta-item"><span class="muted">Select a date.</span><span class="muted">—</span></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.__app_id = "{{ app_id }}";
+        window.__firebase_config = '{{ firebase_config_json|escapejs }}';
+        window.__resident_route_id = "{{ resident_route_id }}";
+        window.__resident_route_points = {{ resident_route_points_json|safe }};
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script>
+        (function () {
+            function safeStr(v) { return (v === null || v === undefined) ? '' : String(v); }
+            function toNumber(v) { var n = Number(v); return isFinite(n) ? n : null; }
+            function normalizeName(s) {
+                var t = safeStr(s).trim();
+                t = t.replace(/\s*-\s*purok\s*\d+/ig, '');
+                t = t.replace(/\bpurok\s*\d+\b/ig, '').trim();
+                return t;
+            }
+            function canonKey(s) {
+                var t = normalizeName(s).toLowerCase();
+                t = t.replace(/\s+/g, ' ').trim();
+                return t;
+            }
+            function parseTimeToMinutes(s) {
+                var t = safeStr(s).trim();
+                if (!t) return null;
+                var m = t.match(/^(\d{1,2})\s*:\s*(\d{2})\s*(AM|PM)$/i);
+                if (!m) return null;
+                var hh = Number(m[1]);
+                var mm = Number(m[2]);
+                var ap = m[3].toUpperCase();
+                if (hh === 12) hh = 0;
+                if (ap === 'PM') hh += 12;
+                return (hh * 60) + mm;
+            }
+            function parseISODate(s) {
+                if (!s) return null;
+                var dt = new Date(s);
+                return isNaN(dt.getTime()) ? null : dt;
+            }
+            function withinWindow(iso, pastDays, futureDays) {
+                var d = parseISODate(iso);
+                if (!d) return false;
+                var now = new Date();
+                var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                var start = new Date(today.getTime() - (pastDays * 24 * 60 * 60 * 1000));
+                var end = new Date(today.getTime() + (futureDays * 24 * 60 * 60 * 1000));
+                return d >= start && d <= end;
+            }
+            function compareKey(a, b) {
+                var ad = safeStr(a.date);
+                var bd = safeStr(b.date);
+                if (ad < bd) return -1;
+                if (ad > bd) return 1;
+                var as = safeStr(a.predicted_start);
+                var bs = safeStr(b.predicted_start);
+                if (as < bs) return -1;
+                if (as > bs) return 1;
+                var ar = safeStr(a.route_name);
+                var br = safeStr(b.route_name);
+                if (ar < br) return -1;
+                if (ar > br) return 1;
+                return 0;
+            }
+
+            if (!window.__firebase_config) return;
+
+            var cfg;
+            try { cfg = JSON.parse(window.__firebase_config); } catch (e) { return; }
+            try { firebase.initializeApp(cfg); } catch (e) {}
+            var db = firebase.firestore();
+
+            var scheduleMap = {};
+            var collectorByDate = {};
+            var weekRow = document.getElementById('weekRow');
+            var weekLabel = document.getElementById('weekLabel');
+            var prevWeekBtn = document.getElementById('prevWeekBtn');
+            var nextWeekBtn = document.getElementById('nextWeekBtn');
+            var todayBtn = document.getElementById('todayBtn');
+            var predWindowText = document.getElementById('predWindowText');
+            var predMetaText = document.getElementById('predMetaText');
+            var dropoffList = document.getElementById('dropoffList');
+            var dropoffByDate = {};
+            var selectedIso = null;
+            var residentRouteId = safeStr(window.__resident_route_id || '').trim();
+            var residentPoints = Array.isArray(window.__resident_route_points) ? window.__resident_route_points : [];
+            var residentKeyToDisplay = {};
+            var residentOrderedKeys = [];
+            var pointIdToKey = {};
+            residentPoints.forEach(function (p) {
+                var nm = normalizeName(p.location_name);
+                var key = canonKey(nm);
+                if (!key) return;
+                residentKeyToDisplay[key] = nm;
+                residentOrderedKeys.push({ key: key, order: Number(p.order || 0) });
+                if (p.point_id) pointIdToKey[String(p.point_id)] = key;
+            });
+            residentOrderedKeys.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+
+            function setDetailsEmpty() {
+                if (predWindowText) predWindowText.textContent = 'Select a date.';
+                if (predMetaText) predMetaText.textContent = '';
+                if (dropoffList) dropoffList.innerHTML = '<li class="eta-item"><span class="muted">Select a date.</span><span class="muted">—</span></li>';
+            }
+
+            function renderResidentList(dropItems) {
+                if (!dropoffList) return;
+                dropoffList.innerHTML = '';
+
+                var dropByKey = {};
+                (dropItems || []).forEach(function (d) {
+                    var key = canonKey(d.name || d.location || '');
+                    if (!key) return;
+                    if (!residentKeyToDisplay[key]) return;
+                    var times = Array.isArray(d.times) ? d.times.slice() : [];
+                    var t = safeStr(d.time || '');
+                    if (t) times.push(t);
+                    times = times.map(function (x) { return safeStr(x).trim(); }).filter(function (x) { return !!x; });
+                    var uniq = [];
+                    var seen = {};
+                    times.forEach(function (x) {
+                        var k = x.toUpperCase();
+                        if (seen[k]) return;
+                        seen[k] = true;
+                        uniq.push(x);
+                    });
+                    uniq.sort(function (a, b) {
+                        var am = parseTimeToMinutes(a);
+                        var bm = parseTimeToMinutes(b);
+                        if (am === null && bm === null) return a.localeCompare(b);
+                        if (am === null) return 1;
+                        if (bm === null) return -1;
+                        return am - bm;
+                    });
+
+                    var prev = dropByKey[key];
+                    if (!prev) {
+                        dropByKey[key] = { times: uniq };
+                        return;
+                    }
+                    var merged = (prev.times || []).concat(uniq);
+                    var mergedUniq = [];
+                    var seen2 = {};
+                    merged.forEach(function (x) {
+                        var k = safeStr(x).toUpperCase();
+                        if (!k || seen2[k]) return;
+                        seen2[k] = true;
+                        mergedUniq.push(x);
+                    });
+                    mergedUniq.sort(function (a, b) {
+                        var am = parseTimeToMinutes(a);
+                        var bm = parseTimeToMinutes(b);
+                        if (am === null && bm === null) return a.localeCompare(b);
+                        if (am === null) return 1;
+                        if (bm === null) return -1;
+                        return am - bm;
+                    });
+                    dropByKey[key] = { times: mergedUniq };
+                });
+
+                if (!residentOrderedKeys.length) {
+                    dropoffList.innerHTML = '<li class="eta-item"><span class="muted">No resident drop-off schedules posted.</span><span class="muted">—</span></li>';
+                    return;
+                }
+
+                residentOrderedKeys.forEach(function (rk) {
+                    var key = rk.key;
+                    var name = residentKeyToDisplay[key] || key;
+                    var times = dropByKey[key] ? (dropByKey[key].times || []) : [];
+                    var li = document.createElement('li');
+                    li.className = 'eta-item';
+                    var left = document.createElement('span');
+                    left.textContent = name;
+                    var right = document.createElement('span');
+                    right.className = 'eta-time';
+                    var dropTxt = times.length ? times.join(', ') : '—';
+                    right.textContent = 'Drop-off: ' + dropTxt;
+                    li.appendChild(left);
+                    li.appendChild(right);
+                    dropoffList.appendChild(li);
+                });
+            }
+
+            function mondayOfWeek(dt) {
+                var d = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+                var day = d.getDay();
+                var diff = (day === 0 ? -6 : 1) - day;
+                d.setDate(d.getDate() + diff);
+                return d;
+            }
+
+            function fmtIso(dt) {
+                var y = dt.getFullYear();
+                var m = String(dt.getMonth() + 1).padStart(2, '0');
+                var d = String(dt.getDate()).padStart(2, '0');
+                return y + '-' + m + '-' + d;
+            }
+
+            function fmtDay(dt) {
+                return dt.toLocaleDateString(undefined, { weekday: 'short' });
+            }
+
+            function fmtPretty(dt) {
+                return dt.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
+            }
+
+            var PAST_DAYS = 365;
+            var FUTURE_DAYS = (function () {
+                var end = new Date(2027, 0, 31);
+                var now = new Date();
+                var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                var diff = Math.ceil((end.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+                return Math.max(0, diff);
+            })();
+            var weekStart = mondayOfWeek(new Date());
+
+            function showFor(isoDate) {
+                selectedIso = isoDate;
+                var routeId = residentRouteId;
+                if (!routeId) {
+                    Object.keys(scheduleMap).some(function (k) {
+                        var d = scheduleMap[k] || {};
+                        var rn = safeStr(d.route_name || d.routeName || '').toLowerCase();
+                        if (rn.indexOf('catmon') !== -1) {
+                            routeId = safeStr(d.route_id || d.routeId || '').toString();
+                            return true;
+                        }
+                        return false;
+                    });
+                }
+                var key = routeId ? (routeId + '|' + isoDate) : null;
+                var doc = key ? scheduleMap[key] : null;
+                var dropItems = dropoffByDate[isoDate] || [];
+                var coll = collectorByDate[isoDate] || null;
+
+                if (predWindowText) {
+                    predWindowText.textContent = '06:00 AM - 10:00 PM';
+                }
+                if (predMetaText) predMetaText.textContent = 'Route: ' + safeStr((doc && (doc.route_name || doc.routeName)) || 'Main Route');
+
+                renderResidentList(dropItems);
+            }
+
+            function renderWeek() {
+                if (!weekRow) return;
+                weekRow.innerHTML = '';
+                var mon = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
+                var isoDates = [];
+                for (var i = 0; i < 7; i++) {
+                    var dt = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i);
+                    isoDates.push(fmtIso(dt));
+                }
+                if (weekLabel) {
+                    var end = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+                    weekLabel.textContent = fmtPretty(mon) + ' - ' + fmtPretty(end) + ' (' + fmtIso(mon) + ' to ' + fmtIso(end) + ')';
+                }
+                isoDates.forEach(function (iso, idx) {
+                    var dt = new Date(iso);
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    var isActive = selectedIso ? (selectedIso === iso) : (idx === 0);
+                    btn.className = 'day-btn' + (isActive ? ' active' : '');
+                    btn.dataset.iso = iso;
+                    var n = document.createElement('div');
+                    n.className = 'day-name';
+                    n.textContent = fmtDay(dt);
+                    var d = document.createElement('div');
+                    d.className = 'day-date';
+                    d.textContent = fmtPretty(dt) + ' (' + iso + ')';
+                    btn.appendChild(n);
+                    btn.appendChild(d);
+                    btn.addEventListener('click', function () {
+                        var all = weekRow.querySelectorAll('.day-btn');
+                        all.forEach(function (x) { x.classList.remove('active'); });
+                        btn.classList.add('active');
+                        showFor(btn.dataset.iso);
+                    });
+                    weekRow.appendChild(btn);
+                });
+                if (!selectedIso || isoDates.indexOf(selectedIso) === -1) {
+                    showFor(isoDates[0]);
+                } else {
+                    showFor(selectedIso);
+                }
+            }
+
+            if (prevWeekBtn) {
+                prevWeekBtn.addEventListener('click', function () {
+                    weekStart.setDate(weekStart.getDate() - 7);
+                    renderWeek();
+                });
+            }
+            if (nextWeekBtn) {
+                nextWeekBtn.addEventListener('click', function () {
+                    weekStart.setDate(weekStart.getDate() + 7);
+                    renderWeek();
+                });
+            }
+            if (todayBtn) {
+                todayBtn.addEventListener('click', function () {
+                    weekStart = mondayOfWeek(new Date());
+                    selectedIso = fmtIso(new Date());
+                    renderWeek();
+                });
+            }
+            renderWeek();
+
+            db.collection('scheduling_assistance').onSnapshot(function (snap) {
+                snap.forEach(function (doc) {
+                    var d = doc.data() || {};
+                    var date = safeStr(d.date);
+                    if (!withinWindow(date, PAST_DAYS, FUTURE_DAYS)) return;
+                    var rid = safeStr(d.route_id || d.routeId || '');
+                    if (rid && date) {
+                        scheduleMap[rid + '|' + date] = d;
+                    }
+                });
+                if (selectedIso) showFor(selectedIso);
+            }, function () {});
+
+            db.collection('dropoffSchedules').onSnapshot(function (snap) {
+                dropoffByDate = {};
+                snap.forEach(function (doc) {
+                    var d = doc.data() || {};
+                    var date = safeStr(d.date);
+                    if (!withinWindow(date, PAST_DAYS, FUTURE_DAYS)) return;
+                    if (!dropoffByDate[date]) dropoffByDate[date] = [];
+                    dropoffByDate[date].push({
+                        name: d.name,
+                        time: d.time,
+                        times: d.times,
+                    });
+                });
+                Object.keys(dropoffByDate).forEach(function (k) {
+                    dropoffByDate[k].sort(function (a, b) { return safeStr(a.time).localeCompare(safeStr(b.time)); });
+                });
+                if (selectedIso) showFor(selectedIso);
+            }, function () {});
+
+            db.collection('collector_schedules').onSnapshot(function (snap) {
+                collectorByDate = {};
+                snap.forEach(function (doc) {
+                    var d = doc.data() || {};
+                    var date = safeStr(d.date);
+                    if (!date) return;
+                    if (!withinWindow(date, PAST_DAYS, FUTURE_DAYS)) return;
+                    var rid = safeStr(d.routeId || d.route_id || '');
+                    if (residentRouteId && rid && rid !== residentRouteId) return;
+                    collectorByDate[date] = d;
+                });
+                if (selectedIso) showFor(selectedIso);
+            }, function () {});
+        })();
+    </script>
 </body>
 </html>

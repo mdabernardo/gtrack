@@ -24,6 +24,14 @@
     </head>
 <body class="min-h-screen flex flex-col bg-white">
     {% include 'partials/topbar.html' with active_tab='garbage_level' %}
+    <div class="px-8 pt-8">
+        <div class="w-full max-w-5xl mx-auto bg-[#d1ffd0] rounded-xl shadow-md p-6">
+            <h2 class="text-2xl font-bold text-[#32a000] mb-4">Highest Waste Level (Analysis)</h2>
+            <div id="highest-analysis" class="text-gray-800">
+                <div class="text-gray-600 font-semibold">Loading…</div>
+            </div>
+        </div>
+    </div>
     <div class="flex-grow flex justify-center items-start p-8">
         <div class="flex flex-col md:flex-row gap-8 w-full max-w-5xl">
             <div class="flex-1 bg-[#d1ffd0] rounded-xl shadow-md p-6">
@@ -56,6 +64,7 @@
         const app = firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         let garbageData = [];
+        const routePoints = {{ route_points_json|default:"[]"|safe }};
         
         const GOOGLE_MAPS_API_KEY = firebaseConfig.apiKey;
         
@@ -92,22 +101,46 @@
         }
         window.initMap = initMap; // Expose to global scope for the Google Maps script tag
 
+        function normalizeWasteLevel(raw) {
+            if (raw === null || raw === undefined || raw === '') return null;
+            if (typeof raw === 'number') {
+                if (raw < 34) return { label: 'Low', key: 'low', value: raw };
+                if (raw < 67) return { label: 'Medium', key: 'medium', value: raw };
+                return { label: 'High', key: 'high', value: raw };
+            }
+            const s = String(raw).trim().toLowerCase();
+            if (!s) return null;
+            if (s === '1' || s.includes('low')) return { label: 'Low', key: 'low', value: raw };
+            if (s === '2' || s.includes('med')) return { label: 'Medium', key: 'medium', value: raw };
+            if (s === '3' || s.includes('high') || s.includes('extreme')) return { label: 'High', key: 'high', value: raw };
+            const n = Number(s);
+            if (!Number.isNaN(n)) return normalizeWasteLevel(n);
+            return { label: String(raw), key: 'unknown', value: raw };
+        }
+
+        function canonKey(s) {
+            return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        }
+
         // Helper function to get marker color and icon SVG
-        function getMarkerIcon(level) {
-            if (!level) return { color: '#808080', svg: '' }; // Default to gray if level is missing
-            const lowerLevel = level.toLowerCase();
+        function getMarkerIcon(rawLevel) {
+            const lvl = normalizeWasteLevel(rawLevel);
+            if (!lvl) return { color: '#808080', svg: '', label: '?', text: 'N/A' };
             let color = '#ff6384';
             let label = 'H';
 
-            if (lowerLevel === 'low') {
-                color = '#4bc0c0'; // Cyan/Teal
+            if (lvl.key === 'low') {
+                color = '#4bc0c0';
                 label = 'L';
-            } else if (lowerLevel === 'medium') {
-                color = '#ffcd56'; // Yellow/Orange
+            } else if (lvl.key === 'medium') {
+                color = '#ffcd56';
                 label = 'M';
-            } else if (lowerLevel === 'high' || lowerLevel === 'extreme') {
-                color = '#ff6384'; // Red/Pink
-                label = 'E'; 
+            } else if (lvl.key === 'high') {
+                color = '#ff6384';
+                label = 'H';
+            } else {
+                color = '#808080';
+                label = '?';
             }
 
             // A custom SVG for a circular marker
@@ -121,6 +154,8 @@
                 color: color,
                 // Encodes the SVG for use as a data URL in the marker icon
                 svg: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+                label: label,
+                text: lvl.label,
             };
         }
 
@@ -176,6 +211,141 @@
             }
         }
 
+        function levelScore(raw) {
+            const lvl = normalizeWasteLevel(raw);
+            if (!lvl) return null;
+            if (lvl.key === 'low') return 1;
+            if (lvl.key === 'medium') return 2;
+            if (lvl.key === 'high') return 3;
+            const n = Number(lvl.value);
+            return Number.isNaN(n) ? null : n;
+        }
+
+        function pickLatestKey(item) {
+            const d = String(item.date || '').trim();
+            const t = String(item.time || '').trim();
+            if (d && t) return d + 'T' + t;
+            if (d) return d;
+            return '';
+        }
+
+        function computeTopLocations(items) {
+            const byLoc = new Map();
+            items.forEach((it) => {
+                const nameRaw = (it.location || it.location_name || it.locationName || it.name || '').toString().trim();
+                if (!nameRaw) return;
+                const name = nameRaw;
+                const raw = (it.garbageLevel ?? it.garbage_level ?? it.level ?? it.severity ?? it.status);
+                const score = levelScore(raw);
+                if (score === null) return;
+                const key = pickLatestKey(it);
+                const prev = byLoc.get(name);
+                if (!prev) {
+                    byLoc.set(name, { name, raw, score, date: it.date, time: it.time, key });
+                    return;
+                }
+                if (key && prev.key) {
+                    if (key > prev.key) byLoc.set(name, { name, raw, score, date: it.date, time: it.time, key });
+                    return;
+                }
+                if (key && !prev.key) {
+                    byLoc.set(name, { name, raw, score, date: it.date, time: it.time, key });
+                    return;
+                }
+                if (!key && !prev.key && score > prev.score) {
+                    byLoc.set(name, { name, raw, score, date: it.date, time: it.time, key });
+                }
+            });
+            const rows = Array.from(byLoc.values());
+            rows.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                const ak = a.key || '';
+                const bk = b.key || '';
+                if (bk !== ak) return bk.localeCompare(ak);
+                return a.name.localeCompare(b.name);
+            });
+            return rows.slice(0, 5);
+        }
+
+        function rawToPercent(raw) {
+            if (raw === null || raw === undefined || raw === '') return 0;
+            if (typeof raw === 'number') return Math.max(0, Math.min(100, raw));
+            const n = Number(raw);
+            if (!Number.isNaN(n)) return Math.max(0, Math.min(100, n));
+            const lvl = normalizeWasteLevel(raw);
+            if (!lvl) return 0;
+            if (lvl.key === 'low') return 25;
+            if (lvl.key === 'medium') return 55;
+            if (lvl.key === 'high') return 85;
+            return 0;
+        }
+
+        function labelFromPercent(pct) {
+            if (pct >= 67) return 'High';
+            if (pct >= 34) return 'Medium';
+            if (pct > 0) return 'Low';
+            return 'N/A';
+        }
+
+        function computeRouteOverall(items) {
+            const points = (Array.isArray(routePoints) ? routePoints : []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+            const keys = points.map((p) => canonKey(p.location_name));
+            const allowed = new Set(keys.filter(Boolean));
+            const agg = new Map();
+
+            items.forEach((it) => {
+                const nameRaw = (it.location || it.location_name || it.locationName || it.name || '').toString().trim();
+                if (!nameRaw) return;
+                const k = canonKey(nameRaw);
+                if (!allowed.has(k)) return;
+                const raw = (it.garbageLevel ?? it.garbage_level ?? it.level ?? it.severity ?? it.status);
+                const pct = rawToPercent(raw);
+                const prev = agg.get(k) || { sum: 0, count: 0 };
+                agg.set(k, { sum: prev.sum + pct, count: prev.count + 1 });
+            });
+
+            return points.map((p) => {
+                const nm = String(p.location_name || '').trim();
+                const k = canonKey(nm);
+                const v = agg.get(k);
+                const avg = v && v.count ? (v.sum / v.count) : 0;
+                const pct = Math.round(avg);
+                return { name: nm, percent: pct, label: labelFromPercent(pct) };
+            });
+        }
+
+        function renderHighestAnalysis() {
+            const el = document.getElementById('highest-analysis');
+            if (!el) return;
+            const routeRows = computeRouteOverall(garbageData);
+            const nonEmpty = routeRows.filter((r) => r.percent > 0);
+            const best = nonEmpty.slice().sort((a, b) => b.percent - a.percent)[0] || routeRows[0] || null;
+
+            const barItems = routeRows.map((r) => {
+                const color = r.percent >= 67 ? '#ff6384' : (r.percent >= 34 ? '#ffcd56' : '#4bc0c0');
+                return `
+                    <div class="py-2">
+                        <div class="flex items-end justify-between gap-4">
+                            <div class="font-extrabold text-gray-900">${r.name}</div>
+                            <div class="font-extrabold text-gray-900">${r.label}</div>
+                        </div>
+                        <div class="w-full bg-white/70 rounded-lg h-3 mt-2 overflow-hidden">
+                            <div class="h-3 rounded-lg" style="width:${r.percent}%; background:${color};"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            el.innerHTML = `
+                <div class="mb-4">
+                    <div class="text-gray-700 font-semibold">Highest overall (among your 6 locations):</div>
+                    <div class="text-xl font-extrabold text-gray-900">${best ? best.name : 'N/A'} — ${best ? best.label : 'N/A'}</div>
+                </div>
+                <div class="text-gray-700 font-semibold mb-2">Bar chart (overall average)</div>
+                <div>${barItems}</div>
+            `;
+        }
+
         function updateDashboard() {
             const legendList = document.getElementById('legend-list');
             legendList.innerHTML = '';
@@ -187,26 +357,30 @@
             const infoWindow = new google.maps.InfoWindow();
 
             garbageData.forEach(item => {
-                const markerIcon = getMarkerIcon(item.garbageLevel);
+                const levelRaw = (item.garbageLevel ?? item.garbage_level ?? item.level ?? item.severity ?? item.status);
+                const markerIcon = getMarkerIcon(levelRaw);
+                const locName = item.location || item.location_name || item.locationName || item.name || 'N/A';
                 
                 // Create Legend Item
                 const li = document.createElement('li');
                 li.className = 'flex items-center cursor-pointer hover:bg-gray-100 p-2 rounded';
                 li.innerHTML = `
                     <span class="w-6 h-6 rounded-full" style="background-color: ${markerIcon.color};"></span>
-                    <span class="ml-3 text-gray-800 text-lg">${item.location || 'N/A'} - ${item.garbageLevel || 'N/A'}</span>
+                    <span class="ml-3 text-gray-800 text-lg">${locName} - ${markerIcon.text}</span>
                 `;
                 legendList.appendChild(li);
 
 
-                if (item.latitude && item.longitude) {
-                    const position = { lat: item.latitude, lng: item.longitude };
+                const lat = typeof item.latitude === 'string' ? parseFloat(item.latitude) : item.latitude;
+                const lng = typeof item.longitude === 'string' ? parseFloat(item.longitude) : item.longitude;
+                if (lat && lng) {
+                    const position = { lat: lat, lng: lng };
                     
                     // Create the Google Maps Marker
                     const marker = new google.maps.Marker({
                         position: position,
                         map: map,
-                        title: `${item.location} - ${item.garbageLevel}`,
+                        title: `${locName} - ${markerIcon.text}`,
                         icon: {
                             url: markerIcon.svg,
                             scaledSize: new google.maps.Size(30, 30), 
@@ -218,8 +392,8 @@
                     marker.addListener("click", () => {
                         infoWindow.setContent(`
                             <div style="font-family: Arial;">
-                                <b>${item.location}</b><br>
-                                Waste Level: <span style="font-weight: bold; color: ${markerIcon.color};">${item.garbageLevel || 'N/A'}</span>
+                                <b>${locName}</b><br>
+                                Waste Level: <span style="font-weight: bold; color: ${markerIcon.color};">${markerIcon.text}</span>
                             </div>
                         `);
                         infoWindow.open(map, marker);
@@ -248,6 +422,7 @@
                 map.setCenter(defaultCenter);
                 map.setZoom(15);
             }
+            renderHighestAnalysis();
         }
 
 

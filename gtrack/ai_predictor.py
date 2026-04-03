@@ -47,6 +47,9 @@ class GarbageRoutePredictor:
             pass
 
     def prepare_data(self, route_id=None):
+        stats = self.prepare_data_from_firestore(route_id=route_id)
+        if stats:
+            return stats
         qs = CollectionHistory.objects.all()
         if route_id:
             qs = qs.filter(route_id=route_id)
@@ -63,6 +66,71 @@ class GarbageRoutePredictor:
                 'start_minutes': start_minutes,
                 'duration': duration
             })
+        return dict(stats)
+
+    def prepare_data_from_firestore(self, route_id=None):
+        items = fetch_garbagelevel_items() or []
+        if not items:
+            return {}
+        routes_qs = Route.objects.all()
+        if route_id:
+            routes_qs = routes_qs.filter(id=route_id)
+        loc_to_routes = defaultdict(list)
+        for r in routes_qs:
+            pts = r.points.select_related('location').all()
+            for p in pts:
+                nm = (p.location.name or '').strip().lower()
+                if nm:
+                    loc_to_routes[nm].append(r.id)
+        route_date_bounds = {}
+        def parse_minutes(t):
+            if t is None:
+                return None
+            s = str(t).strip()
+            for fmt in ("%H:%M:%S", "%H:%M", "%I:%M %p"):
+                try:
+                    dt = datetime.strptime(s, fmt)
+                    return dt.hour * 60 + dt.minute
+                except Exception:
+                    continue
+            try:
+                v = float(s)
+                return int(v)
+            except Exception:
+                return None
+        def parse_date(d):
+            if d is None:
+                return None
+            s = str(d).strip()
+            for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
+                try:
+                    return datetime.strptime(s, fmt).date()
+                except Exception:
+                    continue
+            return None
+        for it in items:
+            loc = str(it.get('location') or '').strip().lower()
+            mins = parse_minutes(it.get('time'))
+            dt = parse_date(it.get('date'))
+            if not loc or mins is None or dt is None:
+                continue
+            rids = loc_to_routes.get(loc) or []
+            for rid in rids:
+                key = (rid, dt.isoformat())
+                b = route_date_bounds.get(key)
+                if not b:
+                    route_date_bounds[key] = {'min': mins, 'max': mins, 'weekday': dt.weekday()}
+                else:
+                    if mins < b['min']:
+                        b['min'] = mins
+                    if mins > b['max']:
+                        b['max'] = mins
+        stats = defaultdict(lambda: defaultdict(list))
+        for (rid, _dstr), b in route_date_bounds.items():
+            start_minutes = b['min']
+            duration = max(30, b['max'] - b['min'])
+            day_key = f"day_{b['weekday']}"
+            stats[f"route_{rid}"][day_key].append({'start_minutes': start_minutes, 'duration': duration})
         return dict(stats)
 
     def train_model(self):
@@ -190,7 +258,7 @@ class GarbageRoutePredictor:
                     })
         return predictions
 
-    def optimize_route_by_garbage_level(self, route_id):
+    def optimize_route_by_garbage_level(self, route_id, explain=False, mirror=True):
         """Optimize visit order using garbage level priority and travel distance.
         - Reads current `Route.points` and Firestore `garbagelevel` documents
         - Scores by `garbageLevel` (higher = higher priority)
@@ -246,6 +314,14 @@ class GarbageRoutePredictor:
             if loc_name and level_val is not None:
                 name_to_level[loc_name] = level_val
 
+        trace = None
+        if explain:
+            trace = {
+                'inputs': {},
+                'points': [],
+                'steps': [],
+            }
+
         # Prepare candidate points
         suggested = []
         matched_count = 0
@@ -275,6 +351,18 @@ class GarbageRoutePredictor:
                 'issue_details': report.get('description', 'Reported issue') if report else None
             })
 
+        if trace is not None:
+            trace['points'] = [
+                {
+                    'location_name': sp.get('location_name'),
+                    'original_order': sp.get('original_order'),
+                    'score': float(sp.get('score') or 0.0),
+                    'has_issue': bool(sp.get('has_issue')),
+                    'issue_details': sp.get('issue_details'),
+                }
+                for sp in suggested
+            ]
+
         # Heuristic: weighted nearest neighbor
         # - Start from highest score point (or first by original order)
         # - At each step, choose next point with minimal effective_cost = distance_km / (1 + alpha*score)
@@ -300,10 +388,28 @@ class GarbageRoutePredictor:
             safe_candidates = [x for x in remaining if not x['has_issue']]
             if safe_candidates:
                 start = max(safe_candidates, key=lambda x: x['score'])
+                if trace is not None:
+                    trace['steps'].append({
+                        'type': 'start',
+                        'selected': start.get('location_name'),
+                        'reason': 'highest_score_without_issue',
+                    })
             else:
                 start = max(remaining, key=lambda x: x['score'])
+                if trace is not None:
+                    trace['steps'].append({
+                        'type': 'start',
+                        'selected': start.get('location_name'),
+                        'reason': 'highest_score',
+                    })
         else:
             start = min(remaining, key=lambda x: x['original_order'])
+            if trace is not None:
+                trace['steps'].append({
+                    'type': 'start',
+                    'selected': start.get('location_name'),
+                    'reason': 'original_order',
+                })
             
         optimized.append(start)
         remaining.remove(start)
@@ -312,6 +418,7 @@ class GarbageRoutePredictor:
             curr = optimized[-1]
             # compute effective cost for each candidate
             best, best_cost, best_dist = None, None, None
+            step_candidates = []
             for cand in remaining:
                 dist = haversine_km(curr['latitude'], curr['longitude'], cand['latitude'], cand['longitude'])
                 
@@ -320,9 +427,28 @@ class GarbageRoutePredictor:
                 
                 # effective cost
                 cost = (dist * penalty) / (1.0 + alpha * float(cand.get('score', 0.0)))
+                if trace is not None:
+                    step_candidates.append({
+                        'to': cand.get('location_name'),
+                        'distance_km': round(float(dist or 0.0), 3),
+                        'penalty': float(penalty),
+                        'score': float(cand.get('score') or 0.0),
+                        'cost': round(float(cost or 0.0), 6),
+                        'has_issue': bool(cand.get('has_issue')),
+                    })
                 
                 if best_cost is None or cost < best_cost:
                     best, best_cost, best_dist = cand, cost, dist
+            if trace is not None:
+                step_candidates.sort(key=lambda x: x.get('cost', 0.0))
+                trace['steps'].append({
+                    'type': 'step',
+                    'from': curr.get('location_name'),
+                    'selected': best.get('location_name') if best else None,
+                    'selected_distance_km': round(float(best_dist or 0.0), 3) if best_dist is not None else None,
+                    'selected_cost': round(float(best_cost or 0.0), 6) if best_cost is not None else None,
+                    'candidates': step_candidates,
+                })
             optimized.append(best)
             remaining.remove(best)
             total_distance_km += float(best_dist or 0.0)
@@ -347,18 +473,28 @@ class GarbageRoutePredictor:
             },
             'generated_at': datetime.utcnow().isoformat()
         }
+        if trace is not None:
+            trace['inputs'] = {
+                'items_count': len(items),
+                'reports_count': len(reports),
+                'matched_points': matched_count,
+                'alpha': alpha,
+                'issue_penalty': issue_penalty,
+                'heuristic': 'weighted_nearest_neighbor_with_penalties',
+            }
+            result['trace'] = trace
 
-        # Mirror to Firestore (best-effort)
-        try:
-            sync_optimization_to_firestore(
-                route_id=route.id,
-                route_name=route.name,
-                optimization_date=datetime.utcnow().date(),
-                suggested_points=optimized,
-                factors=result['factors'],
-                generated_at=result['generated_at'],
-            )
-        except Exception:
-            pass
+        if mirror:
+            try:
+                sync_optimization_to_firestore(
+                    route_id=route.id,
+                    route_name=route.name,
+                    optimization_date=datetime.utcnow().date(),
+                    suggested_points=optimized,
+                    factors=result['factors'],
+                    generated_at=result['generated_at'],
+                )
+            except Exception:
+                pass
 
         return result

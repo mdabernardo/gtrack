@@ -243,6 +243,7 @@ def sync_scheduling_assistance_to_firestore(
     predicted_end_time: str,
     confidence_score: float,
     factors: Optional[dict] = None,
+    etas: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> bool:
     """
     Mirror scheduling assistance into Firestore as a separate artifact.
@@ -268,6 +269,7 @@ def sync_scheduling_assistance_to_firestore(
             'predicted_end': predicted_end_time,
             'confidence': float(confidence_score),
             'factors': factors or {},
+            'etas': list(etas) if etas else [],
             'updated_at': firestore.SERVER_TIMESTAMP if firestore else None,
         }
 
@@ -297,6 +299,46 @@ def fetch_garbagelevel_items() -> list:
                 continue
             data['id'] = d.id
             items.append(data)
+        return items
+    except Exception:
+        return []
+
+
+def fetch_scheduling_assistance_items(
+    start_date: Optional[date_type] = None,
+    end_date: Optional[date_type] = None,
+    route_id: Optional[int] = None,
+    limit: int = 2000,
+) -> list:
+    db = _get_firestore_client()
+    if db is None:
+        return []
+    try:
+        col = db.collection('scheduling_assistance')
+        docs = col.get()
+        items = []
+        start_iso = start_date.strftime('%Y-%m-%d') if start_date else None
+        end_iso = end_date.strftime('%Y-%m-%d') if end_date else None
+        for d in docs:
+            data = d.to_dict() if hasattr(d, 'to_dict') else getattr(d, '_data', {}) or {}
+            if not isinstance(data, dict):
+                continue
+            data['id'] = d.id
+            dt = str(data.get('date') or '').strip()
+            if start_iso and (not dt or dt < start_iso):
+                continue
+            if end_iso and (not dt or dt > end_iso):
+                continue
+            rid = data.get('route_id')
+            try:
+                rid = int(rid) if rid is not None else None
+            except Exception:
+                rid = None
+            if route_id is not None and rid != int(route_id):
+                continue
+            items.append(data)
+            if limit and len(items) >= int(limit):
+                break
         return items
     except Exception:
         return []

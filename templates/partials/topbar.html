@@ -8,6 +8,15 @@
     .gt-nav a.active, .gt-nav a[aria-current="page"]{background:rgba(255,255,255,0.12);padding:4px 8px;border-radius:4px;box-shadow:none;border:0}
     .gt-nav a:hover{background-color:rgba(255,255,255,0.18)}
     .gt-nav a.active{background-color:rgba(255,255,255,0.22);color:#ffffff}
+    .gt-dd{position:relative;display:inline-flex;align-items:center}
+    .gt-dd-btn{background:transparent;border:0;color:#ffffff;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:14px;line-height:20px;font-weight:600;white-space:nowrap}
+    .gt-dd-btn:hover{background-color:rgba(255,255,255,0.18)}
+    .gt-dd-btn.active{background-color:rgba(255,255,255,0.22);color:#ffffff}
+    .gt-dd-menu{position:absolute;top:38px;right:0;min-width:190px;background:#ffffff;color:#0b2f11;border-radius:10px;box-shadow:0 10px 22px rgba(0,0,0,0.2);display:none;overflow:hidden;z-index:60}
+    .gt-dd-menu.show{display:block}
+    .gt-dd-menu a{display:block;padding:10px 12px;text-decoration:none;color:#0b2f11;font-size:14px;font-weight:700}
+    .gt-dd-menu a:hover{background:#f1f5f9}
+    .gt-dd-menu a.active{background:#e5f5e0;color:#1f4f0c}
     .gt-actions{display:flex;align-items:center;gap:10px;flex-shrink:0;margin-right:12px;white-space:nowrap;min-width:0;margin-left:auto}
     .gt-profile{position:relative}
     .gt-profile-btn{background-color:rgba(0,0,0,0.0);border:1px solid rgba(255,255,255,0.6);color:#ffffff;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:14px;line-height:20px}
@@ -20,6 +29,7 @@
       .gt-topbar{gap:10px;height:48px;padding:0 12px}
       .gt-nav{gap:10px}
       .gt-nav a{padding:3px 6px;font-size:13px}
+      .gt-dd-btn{padding:3px 6px;font-size:13px}
       .gt-profile-btn{padding:5px 10px;font-size:13px}
     }
   </style>
@@ -28,13 +38,35 @@
 
   <nav class="gt-nav">
     <a href="{% url 'dashboard' %}" class="{% if active_tab == 'dashboard' %}active{% endif %}">Dashboard</a>
-    <a href="{% url 'notification' %}" class="{% if active_tab == 'notification' %}active{% endif %}">Notifications</a>
-    <a href="{% url 'track_trucks' %}" class="{% if active_tab == 'track_trucks' %}active{% endif %}">Track Trucks</a>
-    <a href="{% url 'garbage_level' %}" class="{% if active_tab == 'garbage_level' %}active{% endif %}">Garbage Level</a>
+    <a href="{% url 'road_map' %}" class="{% if active_tab == 'road_map' %}active{% endif %}">Road Map</a>
+    <a href="{% url 'history' %}" class="{% if active_tab == 'history' %}active{% endif %}">History</a>
     <a href="{% url 'help' %}" class="{% if active_tab == 'help' %}active{% endif %}">Help</a>
-    <a href="{% url 'crud_management' %}" class="{% if active_tab == 'crud_management' %}active{% endif %}">Drop-off</a>
-    <a href="{% url 'resident_verification' %}" class="{% if active_tab == 'resident_verification' %}active{% endif %}">Resident Verification</a>
-    <a href="{% url 'driver_verification' %}" class="{% if active_tab == 'driver_verification' %}active{% endif %}">Garbage Truck Verification</a>
+
+    <div class="gt-dd">
+      <button type="button" class="gt-dd-btn {% if active_tab == 'resident_schedules' or active_tab == 'garbage_level' %}active{% endif %}" onclick="gtToggleMenu(event, 'gtResidentMenu')">Resident ▾</button>
+      <div id="gtResidentMenu" class="gt-dd-menu">
+        <a href="{% url 'schedules' %}" class="{% if active_tab == 'resident_schedules' %}active{% endif %}">Resident Sched</a>
+        <a href="{% url 'garbage_level' %}" class="{% if active_tab == 'garbage_level' %}active{% endif %}">Garbage Level</a>
+      </div>
+    </div>
+
+    <div class="gt-dd">
+      <button type="button" class="gt-dd-btn {% if active_tab == 'track_trucks' or active_tab == 'collector_schedules' %}active{% endif %}" onclick="gtToggleMenu(event, 'gtCollectorMenu')">Collector ▾</button>
+      <div id="gtCollectorMenu" class="gt-dd-menu">
+        <a href="{% url 'track_trucks' %}" class="{% if active_tab == 'track_trucks' %}active{% endif %}">Track Trucks</a>
+        <a href="{% url 'collector_schedules' %}" class="{% if active_tab == 'collector_schedules' %}active{% endif %}">Collector Sched</a>
+      </div>
+    </div>
+
+    <div class="gt-dd">
+      <button type="button" class="gt-dd-btn {% if active_tab == 'notification' or active_tab == 'crud_management' or active_tab == 'resident_verification' or active_tab == 'driver_verification' %}active{% endif %}" onclick="gtToggleMenu(event, 'gtAdminMenu')">Admin ▾</button>
+      <div id="gtAdminMenu" class="gt-dd-menu">
+        <a href="{% url 'notification' %}" class="{% if active_tab == 'notification' %}active{% endif %}">Notifications</a>
+        <a href="{% url 'crud_management' %}" class="{% if active_tab == 'crud_management' %}active{% endif %}">Drop-off</a>
+        <a href="{% url 'resident_verification' %}" class="{% if active_tab == 'resident_verification' %}active{% endif %}">Resident Verification</a>
+        <a href="{% url 'driver_verification' %}" class="{% if active_tab == 'driver_verification' %}active{% endif %}">Garbage Truck Verification</a>
+      </div>
+    </div>
   </nav>
 
   <div class="gt-actions">
@@ -48,14 +80,27 @@
   </div>
 
   <script>
-    function gtToggleProfileMenu(e){
+    function gtHideAllMenus(exceptId){
+      var ids = ['gtResidentMenu','gtCollectorMenu','gtAdminMenu','gtProfileMenu'];
+      ids.forEach(function(id){
+        if(exceptId && id === exceptId) return;
+        var m = document.getElementById(id);
+        if(m) m.classList.remove('show');
+      });
+    }
+    function gtToggleMenu(e, id){
       if(e && e.stopPropagation) e.stopPropagation();
-      var m = document.getElementById('gtProfileMenu');
-      if(!m) return; m.classList.toggle('show');
+      var m = document.getElementById(id);
+      if(!m) return;
+      var willShow = !m.classList.contains('show');
+      gtHideAllMenus();
+      if(willShow) m.classList.add('show');
+    }
+    function gtToggleProfileMenu(e){
+      gtToggleMenu(e, 'gtProfileMenu');
     }
     document.addEventListener('click', function(e){
-      var m = document.getElementById('gtProfileMenu');
-      if(m && !m.contains(e.target)) m.classList.remove('show');
+      gtHideAllMenus();
     });
   </script>
 </div>
