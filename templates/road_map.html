@@ -44,7 +44,9 @@
         .tab { border: 1px solid #eef2f7; background: #fff; border-radius: 999px; padding: 8px 12px; cursor: pointer; font-weight: 900; color: #111827; }
         .tab.active { background: #e5f5e0; border-color: #bfe6bf; color: #1f4f0c; }
         .list { list-style: none; margin: 0; padding: 0; }
-        .item { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eef2f7; }
+        .item { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eef2f7; cursor: pointer; }
+        .item:hover { background: #f9fafb; }
+        .item.selected { background: #e5f5e0; }
         .item:last-child { border-bottom: none; }
         .left { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
         .name { font-weight: 900; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -271,11 +273,13 @@
                     return;
                 }
                 reportsList.innerHTML = filtered.map(function (r) {
-                    var loc = esc(r.location || 'Unknown Location');
-                    var desc = esc(r.description || '—');
+                    var locRaw = safeStr(r.location || '').trim();
+                    var loc = esc(locRaw || 'Unknown Location');
+                    var descRaw = safeStr(r.description || '').trim();
+                    var desc = esc(descRaw || '—');
                     var st = statusBadge(r.status);
                     return (
-                        '<li class="item" data-location="' + esc(r.location || '') + '" data-report-id="' + esc(r.id || '') + '" data-report-collection="' + esc(r.__collection__ || '') + '">' +
+                        '<li class="item" data-location="' + esc(locRaw || 'Unknown Location') + '" data-desc="' + esc(descRaw) + '" data-report-id="' + esc(r.id || '') + '" data-report-collection="' + esc(r.__collection__ || '') + '">' +
                         '<div class="left">' +
                         '<div class="name">' + loc + '</div>' +
                         '<div class="desc">' + desc + '</div>' +
@@ -565,17 +569,26 @@
 
             if (reportsList) {
                 reportsList.addEventListener('click', function (e) {
-                    var li = e.target && e.target.closest ? e.target.closest('li[data-location]') : null;
+                    var li = e.target && e.target.closest ? e.target.closest('li.item') : null;
                     if (!li) return;
+                    try {
+                        Array.from(reportsList.querySelectorAll('li.item.selected')).forEach(function (x) { x.classList.remove('selected'); });
+                        li.classList.add('selected');
+                    } catch (err) {}
                     var loc = safeStr(li.getAttribute('data-location') || '').trim();
-                    if (!loc) return;
-                    selectedLocation = loc;
+                    selectedLocation = loc || 'Unknown Location';
                     selectedReport = {
                         id: safeStr(li.getAttribute('data-report-id') || '').trim(),
                         collection: safeStr(li.getAttribute('data-report-collection') || '').trim()
                     };
-                    setPicked('Selected: ' + loc);
-                    if (workflowLocationSelect) workflowLocationSelect.value = loc;
+                    var desc = safeStr(li.getAttribute('data-desc') || '').trim();
+                    if (workflowTruckFull) {
+                        workflowTruckFull.checked = /\bfull\b/i.test(desc) || /truck\s*full/i.test(desc) || /full\s+na/i.test(desc);
+                    }
+                    setPicked('Selected: ' + (selectedLocation || 'Unknown Location'));
+                    if (workflowLocationSelect) {
+                        workflowLocationSelect.value = selectedLocation;
+                    }
                     previewReady = false;
                     if (approveBtn) approveBtn.disabled = true;
                     runPreview();
