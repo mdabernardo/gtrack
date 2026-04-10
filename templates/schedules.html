@@ -245,10 +245,35 @@
                     return;
                 }
 
-                residentOrderedKeys.forEach(function (rk) {
+                var ordered = residentOrderedKeys.map(function (rk) {
                     var key = rk.key;
                     var name = residentKeyToDisplay[key] || key;
                     var times = dropByKey[key] ? (dropByKey[key].times || []) : [];
+                    var earliest = null;
+                    if (times.length) {
+                        times.forEach(function (t) {
+                            var m = parseTimeToMinutes(t);
+                            if (m === null) return;
+                            if (m < (6 * 60) || m > (21 * 60)) return;
+                            if (earliest === null || m < earliest) earliest = m;
+                        });
+                    }
+                    return { key: key, name: name, times: times, earliest: earliest, order: rk.order };
+                });
+                ordered.sort(function (a, b) {
+                    var am = a.earliest;
+                    var bm = b.earliest;
+                    if (am === null && bm === null) return safeStr(a.order).localeCompare(safeStr(b.order));
+                    if (am === null) return 1;
+                    if (bm === null) return -1;
+                    if (am !== bm) return am - bm;
+                    return safeStr(a.name).localeCompare(safeStr(b.name));
+                });
+
+                ordered.forEach(function (rk) {
+                    var key = rk.key;
+                    var name = rk.name;
+                    var times = rk.times;
                     var li = document.createElement('li');
                     li.className = 'eta-item';
                     var left = document.createElement('span');

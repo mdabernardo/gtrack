@@ -91,12 +91,8 @@
             });
             geocoder = new google.maps.Geocoder();
             
-            // Start fetching data once the map is ready
-            fetchGarbageLevel();
-            
-            // Set up real-time listener (it will call fetchGarbageLevel on data change)
             db.collection("garbagelevel").onSnapshot((snapshot) => {
-                fetchGarbageLevel();
+                processGarbageSnapshot(snapshot);
             });
         }
         window.initMap = initMap; // Expose to global scope for the Google Maps script tag
@@ -178,37 +174,120 @@
             });
         }
 
-        async function fetchGarbageLevel() {
+        function parseLatLng(v) {
+            if (v === null || v === undefined || v === '') return null;
+            const n = (typeof v === 'string') ? parseFloat(v) : Number(v);
+            return Number.isFinite(n) ? n : null;
+        }
+
+        function geoCacheKey(name) {
+            return 'gt_geo_' + canonKey(name || '');
+        }
+
+        function tryLoadCachedCoords(item) {
+            const locName = item.location || item.location_name || item.locationName || item.name || '';
+            const key = geoCacheKey(locName);
             try {
-                const snapshot = await db.collection("garbagelevel").get();
-                garbageData = [];
-
-                for (const doc of snapshot.docs) {
-                    const item = { id: doc.id, ...doc.data() };
-                    
-                    // Only geocode if coordinates are missing.
-                    if (!item.latitude || !item.longitude) {
-                        if (item.location) {
-                            // Append "Malabon, Philippines" to improve geocoding accuracy
-                            const coords = await geocodeAddress(item.location + ", Malabon, Philippines");
-                            if (coords) {
-                                item.latitude = coords.latitude;
-                                item.longitude = coords.longitude;
-                            }
-                        }
-                    }
-                    garbageData.push(item);
-                }
-
-                if (map) {
-                    updateDashboard();
-                } else {
-                    // This case should be rare since fetch is called after initMap, but handles race conditions.
-                    console.log("Map not initialized yet, waiting for initMap to call updateDashboard.");
-                }
-            } catch (error) {
-                console.error("Error fetching garbage data: ", error);
+                const raw = localStorage.getItem(key);
+                if (!raw) return false;
+                const obj = JSON.parse(raw);
+                const lat = parseLatLng(obj && obj.latitude);
+                const lng = parseLatLng(obj && obj.longitude);
+                if (lat === null || lng === null) return false;
+                item.latitude = lat;
+                item.longitude = lng;
+                return true;
+            } catch (e) {
+                return false;
             }
+        }
+
+        let geoQueue = [];
+        let geoActive = 0;
+        let geoDirty = false;
+        function scheduleDashboardUpdate() {
+            if (geoDirty) return;
+            geoDirty = true;
+            setTimeout(() => {
+                geoDirty = false;
+                if (map) updateDashboard();
+            }, 250);
+        }
+
+        function pumpGeoQueue() {
+            while (geoActive < 2 && geoQueue.length) {
+                const job = geoQueue.shift();
+                geoActive += 1;
+                job()
+                    .catch(() => {})
+                    .finally(() => {
+                        geoActive -= 1;
+                        pumpGeoQueue();
+                    });
+            }
+        }
+
+        function ensureCoordinates(item, docRef) {
+            const lat = parseLatLng(item.latitude);
+            const lng = parseLatLng(item.longitude);
+            if (lat !== null && lng !== null) {
+                item.latitude = lat;
+                item.longitude = lng;
+                return;
+            }
+            if (tryLoadCachedCoords(item)) {
+                scheduleDashboardUpdate();
+                return;
+            }
+            const locName = item.location || item.location_name || item.locationName || item.name || '';
+            if (!locName) return;
+            geoQueue.push(async () => {
+                const coords = await geocodeAddress(locName + ", Malabon, Philippines");
+                if (!coords) return;
+                item.latitude = coords.latitude;
+                item.longitude = coords.longitude;
+                try {
+                    localStorage.setItem(geoCacheKey(locName), JSON.stringify({ latitude: coords.latitude, longitude: coords.longitude }));
+                } catch (e) {}
+                try {
+                    if (docRef) {
+                        await docRef.set({ latitude: coords.latitude, longitude: coords.longitude }, { merge: true });
+                    }
+                } catch (e) {}
+                scheduleDashboardUpdate();
+            });
+            pumpGeoQueue();
+        }
+
+        function pickLatestPerLocation(items) {
+            const byLoc = new Map();
+            items.forEach((it) => {
+                const nameRaw = (it.location || it.location_name || it.locationName || it.name || '').toString().trim();
+                if (!nameRaw) return;
+                const key = canonKey(nameRaw);
+                const k = pickLatestKey(it);
+                const prev = byLoc.get(key);
+                if (!prev) {
+                    byLoc.set(key, { key, name: nameRaw, item: it, latestKey: k });
+                    return;
+                }
+                if ((k || '') > (prev.latestKey || '')) {
+                    byLoc.set(key, { key, name: nameRaw, item: it, latestKey: k });
+                }
+            });
+            return Array.from(byLoc.values()).map((x) => x.item);
+        }
+
+        function processGarbageSnapshot(snapshot) {
+            const items = [];
+            snapshot.forEach((doc) => {
+                const data = doc.data() || {};
+                const item = { id: doc.id, ...data };
+                ensureCoordinates(item, doc.ref);
+                items.push(item);
+            });
+            garbageData = items;
+            if (map) updateDashboard();
         }
 
         function levelScore(raw) {
@@ -356,7 +435,8 @@
             
             const infoWindow = new google.maps.InfoWindow();
 
-            garbageData.forEach(item => {
+            const currentItems = pickLatestPerLocation(garbageData);
+            currentItems.forEach(item => {
                 const levelRaw = (item.garbageLevel ?? item.garbage_level ?? item.level ?? item.severity ?? item.status);
                 const markerIcon = getMarkerIcon(levelRaw);
                 const locName = item.location || item.location_name || item.locationName || item.name || 'N/A';
@@ -422,7 +502,14 @@
                 map.setCenter(defaultCenter);
                 map.setZoom(15);
             }
-            renderHighestAnalysis();
+            try {
+                const prev = garbageData;
+                garbageData = currentItems;
+                renderHighestAnalysis();
+                garbageData = prev;
+            } catch (e) {
+                renderHighestAnalysis();
+            }
         }
 
 

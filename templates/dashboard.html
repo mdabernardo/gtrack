@@ -908,7 +908,7 @@
                     if (MAIN_ROUTE_ID && rid && rid !== String(MAIN_ROUTE_ID)) return;
                     const cid = String(d.collectorId || d.collector_id || '').trim();
                     if (cid !== '1' && cid !== '2') return;
-                    rows.push({ name: `Collector ${cid}`, value: '06:00 AM - 10:00 PM' });
+                    rows.push({ name: `Collector ${cid}`, value: '06:00 AM - 09:00 PM' });
                 });
                 rows.sort((a,b)=>a.name.localeCompare(b.name));
                 renderMiniList('dashCollectorSched', 'Today Collect', todayIso, rows);
@@ -1324,23 +1324,44 @@
                     apiLinkEl.style.display = 'none';
                     artifactEl.textContent = '';
                     const { garbage, dropoffs } = await fetchGarbageAndDropoffs();
-                    const dropNames = new Set(dropoffs.map(d => String(d.location || '').trim().toLowerCase()));
+                    const dropByKey = new Map();
+                    dropoffs.forEach(d => {
+                        const rawName = String(d.name || d.location || d.location_name || d.locationName || d.id || '').trim();
+                        if (!rawName) return;
+                        const key = rawName.toLowerCase();
+                        const lat = parseFloat(d.latitude ?? d.lat);
+                        const lng = parseFloat(d.longitude ?? d.lng);
+                        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+                        dropByKey.set(key, { name: rawName, latitude: lat, longitude: lng });
+                    });
                     const lvl = String(level||'').toLowerCase();
                     const isHigh = lvl === 'high';
                     const isMed = lvl === 'medium';
                     const isLow = lvl === 'low';
                     let selected = garbage.filter(g => {
                         const gl = String(g.garbageLevel || '').toLowerCase();
-                        const name = String(g.location || '').trim().toLowerCase();
-                        const inDrop = dropNames.has(name);
+                        const rawName = String(g.location || g.location_name || g.locationName || g.name || g.id || '').trim();
+                        const name = rawName.toLowerCase();
+                        const inDrop = dropByKey.has(name);
                         if (!inDrop) return false; // only include points that are drop-offs
                         if (isHigh) return gl === 'high' || gl === 'extreme';
                         if (isMed) return gl === 'medium';
                         if (isLow) return gl === 'low';
                         return true;
                     });
-                    // keep only those with coordinates
-                    selected = selected.filter(s => typeof s.latitude === 'number' && typeof s.longitude === 'number');
+                    // Attach coordinates from drop-off collection and keep only valid points
+                    selected = selected.map(s => {
+                        const rawName = String(s.location || s.location_name || s.locationName || s.name || s.id || '').trim();
+                        const key = rawName.toLowerCase();
+                        const drop = dropByKey.get(key);
+                        if (!drop) return null;
+                        return {
+                            ...s,
+                            _displayName: drop.name,
+                            latitude: drop.latitude,
+                            longitude: drop.longitude,
+                        };
+                    }).filter(Boolean);
                     if (!selected.length){
                         listEl.innerHTML = '<li>No matching drop-offs for the selected garbage level.</li>';
                         totalEl.textContent = '—';
@@ -1354,7 +1375,7 @@
                     // render list
                     listEl.innerHTML = order.map((p, idx) => `
                         <li class="opt-item">
-                          <span>#${idx+1} — ${esc(p.location || 'Point')}</span>
+                          <span>#${idx+1} — ${esc(p._displayName || p.location || p.location_name || p.locationName || p.name || 'Point')}</span>
                           <span style="color:#7f8c8d;">level: ${esc(p.garbageLevel || 'n/a')}</span>
                         </li>
                     `).join('');
@@ -1363,7 +1384,7 @@
                         latitude: p.latitude,
                         longitude: p.longitude,
                         order: idx+1,
-                        location_name: p.location,
+                        location_name: p._displayName || p.location || p.location_name || p.locationName || p.name,
                     }));
                     renderOnMap(pts);
                 } catch (err) {
@@ -1403,7 +1424,7 @@
                       }
                       listEl.innerHTML = pts.map(p => `
                         <li class="opt-item">
-                          <span>#${esc(p.order)} — ${esc(p.location_name || p.name || 'Point')}</span>
+                          <span>#${esc(p.order)} — ${esc(p.location_name || p.locationName || p.name || 'Point')}</span>
                           <span style="color:#7f8c8d;">score: ${esc(p.score)}</span>
                         </li>
                       `).join('');
@@ -1427,6 +1448,32 @@
                       renderOnMap([]);
                   });
             });
+        })();
+
+        (function () {
+            function norm(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+            function removeCard() {
+                var cards = document.querySelectorAll('.dash-card, .dashboard-card, .card');
+                for (var i = 0; i < cards.length; i++) {
+                    var h2 = cards[i].querySelector('h2');
+                    if (!h2) continue;
+                    var t = norm(h2.textContent);
+                    if (t === 'road reports & reroutes' || t === 'road reports and reroutes') {
+                        cards[i].remove();
+                    }
+                }
+            }
+            function startObserver() {
+                removeCard();
+                if (typeof MutationObserver === 'undefined') return;
+                var obs = new MutationObserver(function () { removeCard(); });
+                obs.observe(document.body, { childList: true, subtree: true });
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', startObserver);
+            } else {
+                startObserver();
+            }
         })();
     </script>
 </body>

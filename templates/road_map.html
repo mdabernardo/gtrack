@@ -24,6 +24,8 @@
         .workflow-steps .muted { font-weight: 700; }
         .workflow-controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
         .workflow-controls select { border: 1px solid #eef2f7; border-radius: 12px; padding: 10px 12px; font-weight: 900; }
+        .workflow-controls input[type="date"] { border: 1px solid #eef2f7; border-radius: 12px; padding: 9px 12px; font-weight: 900; }
+        .workflow-controls label { display:inline-flex; align-items:center; gap:8px; font-weight: 900; color:#111827; }
         .reroute-details { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #f9fafb; border: 1px solid #eef2f7; font-weight: 800; color: #111827; display:none; }
         .reroute-details .muted { font-weight: 700; color: #6b7280; }
         .ai-box { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #0b1220; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.08); display:block; }
@@ -72,6 +74,8 @@
                     <select id="workflowLocationSelect">
                         <option value="">Select location…</option>
                     </select>
+                    <input type="date" id="workflowDate" />
+                    <label><input type="checkbox" id="workflowTruckFull" />Truck 1 full</label>
                     <button class="btn" type="button" id="previewBtn">Run AI / Refresh</button>
                     <button class="btn secondary" type="button" id="approveBtn" disabled>Approve + Notify Mobile</button>
                 </div>
@@ -167,6 +171,8 @@
             var approveBtn = document.getElementById('approveBtn');
             var workflowRouteSelect = document.getElementById('workflowRouteSelect');
             var workflowLocationSelect = document.getElementById('workflowLocationSelect');
+            var workflowDate = document.getElementById('workflowDate');
+            var workflowTruckFull = document.getElementById('workflowTruckFull');
             var workflowStatus = document.getElementById('workflowStatus');
             var workflowPicked = document.getElementById('workflowPicked');
             var rerouteDetails = document.getElementById('rerouteDetails');
@@ -177,8 +183,81 @@
 
             var reports = [];
             var selectedLocation = '';
+            var selectedReport = { id: '', collection: '' };
             var selectedRoute = { id: '', name: 'Main Route' };
             var previewReady = false;
+            var previewAbort = null;
+            var previewSeq = 0;
+
+            function renderPreviewOrder(data) {
+                if (!rerouteDetails) return;
+                var pts = data && (data.suggested_points || data.suggestedPoints);
+                if (!Array.isArray(pts) || !pts.length) {
+                    rerouteDetails.style.display = 'none';
+                    return;
+                }
+                var arr = pts.slice();
+                arr.sort(function (a, b) { return (Number(a.order) || 0) - (Number(b.order) || 0); });
+                var names = arr.map(function (p) { return safeStr(p.location_name || p.locationName || p.name || p.location || ''); }).filter(Boolean);
+                if (!names.length) {
+                    rerouteDetails.style.display = 'none';
+                    return;
+                }
+                rerouteDetails.style.display = 'block';
+                rerouteDetails.textContent = 'Preview suggested order: ' + names.join(' → ');
+            }
+
+            function runPreview() {
+                if (!selectedRoute.id) {
+                    setWorkflowStatus('No route selected.', 'err');
+                    return;
+                }
+                previewReady = false;
+                if (approveBtn) approveBtn.disabled = true;
+                setWorkflowStatus('Generating reroute preview…', '');
+                if (aiTraceBox) aiTraceBox.style.display = 'block';
+                if (aiTraceText) aiTraceText.textContent = 'Loading…';
+                if (previewAbort) {
+                    try { previewAbort.abort(); } catch (e) {}
+                }
+                previewAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+                var seq = ++previewSeq;
+                var url = '/api/routes/' + encodeURIComponent(selectedRoute.id) + '/optimize/?explain=1&mirror=0';
+                if (workflowDate && safeStr(workflowDate.value)) {
+                    url += '&date=' + encodeURIComponent(safeStr(workflowDate.value));
+                }
+                if (selectedReport && selectedReport.id) {
+                    url += '&report_id=' + encodeURIComponent(safeStr(selectedReport.id));
+                    url += '&report_collection=' + encodeURIComponent(safeStr(selectedReport.collection || ''));
+                    url += '&location_name=' + encodeURIComponent(safeStr(selectedLocation || ''));
+                }
+                fetch(url, {
+                    method: 'GET',
+                    signal: previewAbort ? previewAbort.signal : undefined
+                })
+                    .then(async (r) => {
+                        var txt = await r.text();
+                        if (!r.ok) throw new Error(txt || 'Request failed');
+                        try { return JSON.parse(txt); } catch (e) { throw new Error('Invalid JSON response'); }
+                    })
+                    .then((data) => {
+                        if (seq !== previewSeq) return;
+                        previewReady = true;
+                        if (approveBtn) approveBtn.disabled = false;
+                        setWorkflowStatus('AI computed. If okay, approve to notify mobile.', 'ok');
+                        renderTrace(data && data.trace ? data.trace : null);
+                        renderPreviewOrder(data || null);
+                        activeRerouteTab = 'reroutr';
+                        listenReroutes();
+                    })
+                    .catch((e) => {
+                        if (e && e.name === 'AbortError') return;
+                        if (seq !== previewSeq) return;
+                        if (aiTraceBox) aiTraceBox.style.display = 'block';
+                        if (aiTraceText) aiTraceText.textContent = 'Failed to load AI trace.\n' + safeStr(e && e.message ? e.message : e);
+                        setWorkflowStatus('Failed to run AI.', 'err');
+                    });
+            }
             function renderReports() {
                 if (!reportsList) return;
                 var filtered = reports.slice();
@@ -196,7 +275,7 @@
                     var desc = esc(r.description || '—');
                     var st = statusBadge(r.status);
                     return (
-                        '<li class="item" data-location="' + esc(r.location || '') + '">' +
+                        '<li class="item" data-location="' + esc(r.location || '') + '" data-report-id="' + esc(r.id || '') + '" data-report-collection="' + esc(r.__collection__ || '') + '">' +
                         '<div class="left">' +
                         '<div class="name">' + loc + '</div>' +
                         '<div class="desc">' + desc + '</div>' +
@@ -365,6 +444,12 @@
                 lines.push('- alpha: ' + safeStr(inputs.alpha));
                 lines.push('- issue_penalty: ' + safeStr(inputs.issue_penalty));
                 lines.push('- heuristic: ' + safeStr(inputs.heuristic));
+                if (inputs.month != null && safeStr(inputs.month) !== '') {
+                    lines.push('- month: ' + safeStr(inputs.month));
+                }
+                if (inputs.capacity_policy) {
+                    lines.push('- capacity_policy: ' + safeStr(inputs.capacity_policy));
+                }
                 lines.push('');
 
                 var pts = Array.isArray(trace.points) ? trace.points.slice() : [];
@@ -485,41 +570,21 @@
                     var loc = safeStr(li.getAttribute('data-location') || '').trim();
                     if (!loc) return;
                     selectedLocation = loc;
+                    selectedReport = {
+                        id: safeStr(li.getAttribute('data-report-id') || '').trim(),
+                        collection: safeStr(li.getAttribute('data-report-collection') || '').trim()
+                    };
                     setPicked('Selected: ' + loc);
                     if (workflowLocationSelect) workflowLocationSelect.value = loc;
                     previewReady = false;
                     if (approveBtn) approveBtn.disabled = true;
+                    runPreview();
                 });
             }
 
             if (previewBtn) {
                 previewBtn.addEventListener('click', function () {
-                    if (!selectedRoute.id) {
-                        setWorkflowStatus('No route selected.', 'err');
-                        return;
-                    }
-                    setWorkflowStatus('Generating reroute preview…', '');
-                    if (aiTraceBox) aiTraceBox.style.display = 'block';
-                    if (aiTraceText) aiTraceText.textContent = 'Loading…';
-                    fetch('/api/routes/' + encodeURIComponent(selectedRoute.id) + '/optimize/?explain=1&mirror=0', { method: 'GET' })
-                        .then(async (r) => {
-                            var txt = await r.text();
-                            if (!r.ok) throw new Error(txt || 'Request failed');
-                            try { return JSON.parse(txt); } catch (e) { throw new Error('Invalid JSON response'); }
-                        })
-                        .then((data) => {
-                            previewReady = true;
-                            if (approveBtn) approveBtn.disabled = false;
-                            setWorkflowStatus('AI computed. If okay, approve to notify mobile.', 'ok');
-                            renderTrace(data && data.trace ? data.trace : null);
-                            activeRerouteTab = 'reroutr';
-                            listenReroutes();
-                        })
-                        .catch((e) => {
-                            if (aiTraceBox) aiTraceBox.style.display = 'block';
-                            if (aiTraceText) aiTraceText.textContent = 'Failed to load AI trace.\n' + safeStr(e && e.message ? e.message : e);
-                            setWorkflowStatus('Failed to run AI.', 'err');
-                        });
+                    runPreview();
                 });
             }
 
@@ -533,13 +598,26 @@
                     var loc = selectedLocation || 'multiple locations';
                     var url = '/api/approve-reroute/?route_id=' + encodeURIComponent(selectedRoute.id) +
                         '&route_name=' + encodeURIComponent(selectedRoute.name || 'Main Route') +
-                        '&location_name=' + encodeURIComponent(loc);
+                        '&location_name=' + encodeURIComponent(loc) +
+                        '&report_id=' + encodeURIComponent(selectedReport && selectedReport.id ? selectedReport.id : '') +
+                        '&report_collection=' + encodeURIComponent(selectedReport && selectedReport.collection ? selectedReport.collection : '');
+                    if (workflowDate && safeStr(workflowDate.value)) {
+                        url += '&date=' + encodeURIComponent(safeStr(workflowDate.value));
+                    }
+                    if (workflowTruckFull && workflowTruckFull.checked) {
+                        url += '&handoff=1&full_collector_id=1';
+                    }
                     fetch(url, { method: 'GET' })
                         .then(r => r.ok ? r.json() : Promise.reject(new Error('approve')))
                         .then(data => {
                             var webCnt = data && data.web_notifications_created != null ? String(data.web_notifications_created) : '—';
                             var pushCnt = data && data.push_notifications_sent != null ? String(data.push_notifications_sent) : '—';
-                            setWorkflowStatus('Approved. Web notifications: ' + webCnt + ' • Push sent: ' + pushCnt, 'ok');
+                            var handoff = data && data.handoff ? data.handoff : null;
+                            var extra = '';
+                            if (handoff && data.handoff_applied) {
+                                extra = ' • Handoff: Truck ' + safeStr(handoff.fullCollectorId) + ' (' + safeStr(handoff.fullStopsCount) + ' stops) → Truck ' + safeStr(handoff.otherCollectorId) + ' (' + safeStr(handoff.remainingStopsCount) + ' stops)';
+                            }
+                            setWorkflowStatus('Approved. Web notifications: ' + webCnt + ' • Push sent: ' + pushCnt + extra, 'ok');
                         })
                         .catch(() => setWorkflowStatus('Failed to send notifications.', 'err'));
                 });
@@ -570,6 +648,10 @@
             }
 
             loadRoutesForWorkflow();
+            try {
+                var now = new Date();
+                if (workflowDate) workflowDate.value = now.toISOString().slice(0, 10);
+            } catch (e) {}
             attachTabHandlers();
             listenRoadReports();
             listenReroutes();

@@ -258,7 +258,7 @@ class GarbageRoutePredictor:
                     })
         return predictions
 
-    def optimize_route_by_garbage_level(self, route_id, explain=False, mirror=True):
+    def optimize_route_by_garbage_level(self, route_id, explain=False, mirror=True, road_reports=None, optimization_date=None, min_level=None, start_policy='highest_score'):
         """Optimize visit order using garbage level priority and travel distance.
         - Reads current `Route.points` and Firestore `garbagelevel` documents
         - Scores by `garbageLevel` (higher = higher priority)
@@ -288,11 +288,20 @@ class GarbageRoutePredictor:
                 'generated_at': datetime.utcnow().isoformat()
             }
 
-        # Fetch garbage level items from Firestore
-        items = fetch_garbagelevel_items() or []
+        try:
+            opt_date = optimization_date
+            if opt_date is None:
+                opt_date = datetime.utcnow().date()
+        except Exception:
+            opt_date = datetime.utcnow().date()
+
+        items = fetch_garbagelevel_items(for_date=opt_date) or []
         
         # Fetch road reports (e.g. obstructions, traffic)
-        reports = fetch_road_reports() or []
+        if road_reports is None:
+            reports = fetch_road_reports() or []
+        else:
+            reports = road_reports or []
         report_map = {}
         for r in reports:
             # Assume 'location' field contains the name
@@ -363,6 +372,18 @@ class GarbageRoutePredictor:
                 for sp in suggested
             ]
 
+        def min_threshold(level_name):
+            s = str(level_name or '').strip().lower()
+            if s in ('high', 'h'):
+                return 70.0
+            if s in ('extreme', 'x'):
+                return 85.0
+            if s in ('medium', 'm', 'med'):
+                return 40.0
+            if s in ('low', 'l'):
+                return 0.0
+            return None
+
         # Heuristic: weighted nearest neighbor
         # - Start from highest score point (or first by original order)
         # - At each step, choose next point with minimal effective_cost = distance_km / (1 + alpha*score)
@@ -386,21 +407,40 @@ class GarbageRoutePredictor:
         if items:
             # Filter out issues for start node if possible
             safe_candidates = [x for x in remaining if not x['has_issue']]
-            if safe_candidates:
-                start = max(safe_candidates, key=lambda x: x['score'])
+            cand = safe_candidates if safe_candidates else remaining
+            threshold = min_threshold(min_level)
+            if threshold is not None:
+                strong = [x for x in cand if float(x.get('score') or 0.0) >= float(threshold)]
+                if strong:
+                    cand = strong
+            cand_sorted = sorted(cand, key=lambda x: float(x.get('score') or 0.0), reverse=True)
+            if not cand_sorted:
+                cand_sorted = sorted(remaining, key=lambda x: float(x.get('score') or 0.0), reverse=True)
+
+            if str(start_policy or '').strip().lower() == 'rotate' and cand_sorted:
+                top_n = min(4, len(cand_sorted))
+                pool = cand_sorted[:top_n]
+                try:
+                    idx = (int(opt_date.strftime('%Y%m%d')) + int(route.id)) % len(pool)
+                except Exception:
+                    idx = 0
+                start = pool[idx]
                 if trace is not None:
                     trace['steps'].append({
                         'type': 'start',
                         'selected': start.get('location_name'),
-                        'reason': 'highest_score_without_issue',
+                        'reason': 'rotate_among_top',
+                        'pool_size': len(pool),
+                        'min_level': min_level,
                     })
             else:
-                start = max(remaining, key=lambda x: x['score'])
+                start = cand_sorted[0]
                 if trace is not None:
                     trace['steps'].append({
                         'type': 'start',
                         'selected': start.get('location_name'),
-                        'reason': 'highest_score',
+                        'reason': 'highest_score_without_issue' if safe_candidates else 'highest_score',
+                        'min_level': min_level,
                     })
         else:
             start = min(remaining, key=lambda x: x['original_order'])
@@ -463,6 +503,9 @@ class GarbageRoutePredictor:
             'suggested_points': optimized,
             'factors': {
                 'source': 'firestore.garbagelevel + road_report',
+                'optimization_date': opt_date.strftime('%Y-%m-%d') if opt_date else None,
+                'min_level': min_level,
+                'start_policy': start_policy,
                 'items_count': len(items),
                 'reports_count': len(reports),
                 'matched_points': matched_count,
@@ -482,6 +525,13 @@ class GarbageRoutePredictor:
                 'issue_penalty': issue_penalty,
                 'heuristic': 'weighted_nearest_neighbor_with_penalties',
             }
+            try:
+                now = datetime.utcnow()
+                trace['inputs']['month'] = int(now.month)
+                if int(now.month) == 12:
+                    trace['inputs']['capacity_policy'] = 'december_truck1_full_go_dropoff_or_delegate'
+            except Exception:
+                pass
             result['trace'] = trace
 
         if mirror:
@@ -489,10 +539,12 @@ class GarbageRoutePredictor:
                 sync_optimization_to_firestore(
                     route_id=route.id,
                     route_name=route.name,
-                    optimization_date=datetime.utcnow().date(),
+                    optimization_date=opt_date,
                     suggested_points=optimized,
                     factors=result['factors'],
                     generated_at=result['generated_at'],
+                    min_level=min_level,
+                    start_policy=start_policy,
                 )
             except Exception:
                 pass

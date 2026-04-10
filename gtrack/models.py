@@ -104,6 +104,7 @@ class Notification(models.Model):
         ('schedule', 'Schedule Reminder'),
         ('delay', 'Delay Alert'),
         ('change', 'Route Change'),
+        ('verification', 'Resident Verification'),
         ('general', 'General Information'),
     ]
     

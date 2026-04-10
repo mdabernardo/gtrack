@@ -247,44 +247,21 @@
     </div>
     
     <script>
-        // ===============================================
-        // 1. FIREBASE INITIALIZATION
-        // ===============================================
-        const firebaseConfig = JSON.parse('{{ firebase_config_json|escapejs }}');
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const db = firebase.firestore();
         const container = document.getElementById('notifications-container');
         const notificationBadge = document.getElementById('notification-badge');
-
-        // Ensure we have an auth session for rules that require authentication
-        async function ensureAuth() {
-            try {
-                if (firebase.auth && !firebase.auth().currentUser) {
-                    await firebase.auth().signInAnonymously();
-                }
-            } catch (err) {
-                console.warn('Anonymous sign-in failed (continuing to fallback if needed):', err);
-            }
-        }
 
         // ===============================================
         // 2. REALTIME DATA FETCHING AND UI UPDATE
         // ===============================================
 
-        async function setupRealtimeListener() {
-            await ensureAuth();
-            // Target the 'residents' collection with a 'verificationStatus' filter
-            const pendingResidentsRef = db.collection("residents")
-                                         .where("verificationStatus", "==", "Pending");
+        async function loadPending() {
+            try {
+                const res = await fetch('/api/resident-verification/requests/?status=Pending', { credentials: 'same-origin' });
+                if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+                const json = await res.json();
+                const items = (json && json.items) ? json.items : [];
 
-            pendingResidentsRef.onSnapshot((snapshot) => {
-                console.log("Firebase snapshot received.", { count: snapshot.size });
-                container.innerHTML = ''; 
-                const pendingCount = snapshot.size;
-
-                // Update the Notification Badge (guard against missing element)
+                const pendingCount = items.length;
                 if (notificationBadge) {
                     if (pendingCount > 0) {
                         notificationBadge.textContent = pendingCount;
@@ -293,43 +270,40 @@
                         notificationBadge.style.display = 'none';
                     }
                 }
-                
-                if (snapshot.empty) {
+
+                container.innerHTML = '';
+                if (pendingCount === 0) {
                     container.innerHTML = '<p style="text-align:center; padding: 20px; font-style: italic;">No new residents pending verification.</p>';
                     return;
                 }
 
-                const docs = snapshot.docs.map(d => ({ id: d.id, data: d.data() }));
-                docs.sort((a, b) => {
-                    const at = a.data.timestamp;
-                    const bt = b.data.timestamp;
-                    const aMillis = at && typeof at.toMillis === 'function' ? at.toMillis() : 0;
-                    const bMillis = bt && typeof bt.toMillis === 'function' ? bt.toMillis() : 0;
-                    return bMillis - aMillis;
-                });
+                items.forEach((item) => {
+                    const resident = item.resident || {};
+                    const requestId = item.id;
+                    const fullName = (`${resident.firstName || ''} ${resident.lastName || ''}`).trim() || 'N/A';
+                    const username = resident.username || 'N/A';
+                    const address = resident.address || resident.fullAddress || [resident.street, resident.barangay].filter(Boolean).join(', ') || 'N/A';
+                    const email = resident.email || 'N/A';
 
-                docs.forEach(({ id: residentId, data: resident }) => {
-                    const item = document.createElement('div');
-                    item.className = 'notification-card';
-                    item.innerHTML = `
+                    const el = document.createElement('div');
+                    el.className = 'notification-card';
+                    el.innerHTML = `
                         <h3>New Resident Registration</h3>
-                        <p><strong>Name:</strong> ${resident.firstName || ''} ${resident.lastName || ''}</p>
-                        <p><strong>Username:</strong> ${resident.username || 'N/A'}</p>
-                        <p><strong>Address:</strong> ${resident.address || 'N/A'}</p>
-                        <p><strong>Email:</strong> ${resident.email || 'N/A'}</p>
+                        <p><strong>Name:</strong> ${fullName}</p>
+                        <p><strong>Username:</strong> ${username}</p>
+                        <p><strong>Address:</strong> ${address}</p>
+                        <p><strong>Email:</strong> ${email}</p>
                         <div class="actions">
-                            <button class="btn-approve" onclick="approveResident('${residentId}')">Approve</button>
-                            <button class="btn-reject" onclick="rejectResident('${residentId}')">Reject</button>
+                            <button class="btn-approve" onclick="approveResident('${requestId}')">Approve</button>
+                            <button class="btn-reject" onclick="rejectResident('${requestId}')">Reject</button>
                         </div>
                     `;
-                    container.appendChild(item);
+                    container.appendChild(el);
                 });
-            }, (error) => {
-                const code = (error && error.code) || 'unknown';
-                console.warn('Realtime listener issue, switching to REST fallback.', { code });
-                container.innerHTML = '<p style="color:#c00; text-align:center; padding: 20px;">Realtime loading failed. Loading from backend…</p>';
-                loadFromApiFallback();
-            });
+            } catch (err) {
+                console.error(err);
+                container.innerHTML = '<p style="color:red; text-align:center; padding: 20px;">❌ ERROR: Failed to load pending verifications.</p>';
+            }
         }
 
         // ===============================================
@@ -338,12 +312,15 @@
         async function approveResident(id) {
             if (!confirm("Are you sure you want to approve this resident?")) return;
             try {
-                const docRef = db.collection("residents").doc(id);
-                await docRef.update({
-                    verificationStatus: "Verified",
-                    verificationDate: firebase.firestore.FieldValue.serverTimestamp()
+                const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+                const res = await fetch(`/api/resident-verification/${encodeURIComponent(id)}/verify/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrf },
+                    credentials: 'same-origin'
                 });
+                if (!res.ok) throw new Error(`Verify failed: ${res.status}`);
                 alert(`Resident ${id} approved successfully!`);
+                loadPending();
             } catch (error) {
                 console.error("Error approving resident: ", error);
                 alert("Failed to approve resident. Check console for details.");
@@ -353,132 +330,25 @@
         async function rejectResident(id) {
             if (!confirm("Are you sure you want to reject this resident?")) return;
             try {
-                const docRef = db.collection("residents").doc(id);
-                await docRef.update({
-                    verificationStatus: "Rejected"
+                const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+                const res = await fetch(`/api/resident-verification/${encodeURIComponent(id)}/reject/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrf },
+                    credentials: 'same-origin'
                 });
+                if (!res.ok) throw new Error(`Reject failed: ${res.status}`);
                 alert(`Resident ${id} rejected. List updating...`);
+                loadPending();
             } catch (error) {
                 console.error("Error rejecting resident: ", error);
                 alert("Failed to reject resident. Check console for details.");
             }
         }
 
-        // Backend REST fallback loader for pending residents
-        async function loadFromApiFallback() {
-            try {
-                const res = await fetch('/api/residents/?is_verified=false', {
-                    credentials: 'same-origin',
-                    headers: { 'Accept': 'application/json' }
-                });
-                if (!res.ok) throw new Error('API error');
-                const data = await res.json();
-                const items = (Array.isArray(data) ? data : data.results || []);
-
-                container.innerHTML = '';
-                const count = items.length;
-                if (notificationBadge) {
-                    if (count > 0) {
-                        notificationBadge.textContent = count;
-                        notificationBadge.style.display = 'block';
-                    } else {
-                        notificationBadge.style.display = 'none';
-                    }
-                }
-                if (count === 0) {
-                    container.innerHTML = '<p style="text-align:center; padding: 20px; font-style: italic;">No pending residents from backend.</p>';
-                }
-
-                items.forEach(r => {
-                    const item = document.createElement('div');
-                    item.className = 'notification-card';
-                    item.dataset.residentId = r.id;
-                    const fullName = (r.name || `${r.user_details?.first_name || ''} ${r.user_details?.last_name || ''}`).trim() || 'N/A';
-                    const username = r.user_details?.username || 'N/A';
-                    const address = r.address || r.fullAddress || 'N/A';
-                    const email = r.user_details?.email || 'N/A';
-                    item.innerHTML = `
-                        <h3>New Resident Registration</h3>
-                        <p><strong>Name:</strong> ${fullName}</p>
-                        <p><strong>Username:</strong> ${username}</p>
-                        <p><strong>Address:</strong> ${address}</p>
-                        <p><strong>Email:</strong> ${email}</p>
-                        <div class="actions">
-                            <button class="btn-approve" onclick="approveResidentApi(${r.id}, this.closest('.notification-card'))">Approve</button>
-                            <button class="btn-reject" onclick="rejectResidentApi(${r.id}, this.closest('.notification-card'))">Reject</button>
-                        </div>
-                    `;
-                    container.appendChild(item);
-                });
-            } catch (e) {
-                console.error('Fallback API failed', e);
-                container.innerHTML = `<p style="color:red; text-align:center; padding: 20px;">❌ ERROR: Fallback API failed. Please check backend.</p>`;
-            }
-        }
-
-        // ===============================================
-        // 4. RUNTIME & MISC LOGIC
-        // ===============================================
-
-        // CSRF helper for DRF session-auth POSTs
-        function getCsrfToken() {
-            const match = document.cookie.match(/csrftoken=([^;]+)/);
-            return match ? match[1] : '';
-        }
-
-        async function approveResidentApi(id, cardEl) {
-            if (!confirm("Approve this resident?")) return;
-            try {
-                const res = await fetch(`/api/residents/${id}/verify/`, {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': getCsrfToken() },
-                    credentials: 'same-origin'
-                });
-                if (!res.ok) throw new Error(`Verify failed: ${res.status}`);
-                // Remove card and update badge
-                if (cardEl) cardEl.remove();
-                if (notificationBadge) {
-                    const current = parseInt(notificationBadge.textContent || '0', 10);
-                    const next = Math.max(0, current - 1);
-                    notificationBadge.textContent = next;
-                    notificationBadge.style.display = next > 0 ? 'block' : 'none';
-                }
-                alert('Resident approved.');
-            } catch (err) {
-                console.error(err);
-                alert('Failed to approve via backend.');
-            }
-        }
-
-        async function rejectResidentApi(id, cardEl) {
-            if (!confirm("Reject this resident?")) return;
-            try {
-                const res = await fetch(`/api/residents/${id}/reject/`, {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': getCsrfToken() },
-                    credentials: 'same-origin'
-                });
-                if (!res.ok) throw new Error(`Reject failed: ${res.status}`);
-                // Remove card and update badge
-                if (cardEl) cardEl.remove();
-                if (notificationBadge) {
-                    const current = parseInt(notificationBadge.textContent || '0', 10);
-                    const next = Math.max(0, current - 1);
-                    notificationBadge.textContent = next;
-                    notificationBadge.style.display = next > 0 ? 'block' : 'none';
-                }
-                alert('Resident rejected.');
-            } catch (err) {
-                console.error(err);
-                alert('Failed to reject via backend.');
-            }
-        }
-
-        setupRealtimeListener();
+        loadPending();
+        setInterval(loadPending, 5000);
         window.approveResident = approveResident;
         window.rejectResident = rejectResident;
-        window.approveResidentApi = approveResidentApi;
-        window.rejectResidentApi = rejectResidentApi;
     </script>
 </body>
 </html>

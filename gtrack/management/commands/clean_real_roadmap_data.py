@@ -3,12 +3,12 @@ from datetime import datetime
 from django.core.management.base import BaseCommand
 
 from gtrack.ai_predictor import GarbageRoutePredictor
-from gtrack.firebase_sync import _get_firestore_client, sync_optimization_to_firestore
+from gtrack.firebase_sync import _get_firestore_client
 from gtrack.models import Route, RoutePoint
 
 
 class Command(BaseCommand):
-    help = "Remove demo road reports/reroutes and regenerate reroutr/route_suggestion with real Main Route (6 locations) data."
+    help = "Reset reroutr so it contains only one document per road report (no date-based history)."
 
     def handle(self, *args, **opts):
         db = _get_firestore_client()
@@ -31,8 +31,21 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("Main Route has no points; unable to generate reroute suggestions."))
             return
 
-        removed_reports = 0
-        scanned_reports = 0
+        reports = []
+        for col in ("road_reports", "road_report"):
+            try:
+                docs = db.collection(col).get()
+            except Exception:
+                continue
+            for doc in docs:
+                data = doc.to_dict() if hasattr(doc, "to_dict") else {}
+                if not isinstance(data, dict):
+                    continue
+                d = dict(data)
+                d["id"] = doc.id
+                d["__collection__"] = col
+                reports.append(d)
+
         batch = db.batch()
         ops = 0
 
@@ -46,100 +59,83 @@ class Command(BaseCommand):
                 batch = db.batch()
                 ops = 0
 
-        def should_delete_report(data: dict) -> bool:
-            loc = str((data or {}).get("location") or "").strip().lower()
-            desc = str((data or {}).get("description") or "").strip().lower()
-            if "catmon" in loc or "malabon" in loc:
-                return True
-            if "sample obstruction near catmon" in desc:
-                return True
-            if "reroute testing" in desc:
-                return True
-            return False
-
-        for col in ("road_reports", "road_report"):
-            try:
-                docs = db.collection(col).get()
-            except Exception:
-                continue
-            for doc in docs:
-                scanned_reports += 1
-                data = doc.to_dict() if hasattr(doc, "to_dict") else {}
-                if not isinstance(data, dict):
-                    continue
-                if not should_delete_report(data):
-                    continue
-                try:
-                    batch.delete(db.collection(col).document(doc.id))
-                    ops += 1
-                    removed_reports += 1
-                    if ops >= 350:
-                        commit_batch()
-                except Exception:
-                    continue
-
-        commit_batch()
-
         removed_reroutes = 0
         scanned_reroutes = 0
-        batch = db.batch()
-        ops = 0
-
-        def should_delete_reroute(data: dict) -> bool:
-            rn = str((data or {}).get("route_name") or (data or {}).get("routeName") or "").strip().lower()
-            rid = (data or {}).get("route_id") or (data or {}).get("routeId")
-            pts_list = (data or {}).get("suggested_points") or (data or {}).get("suggestedPoints") or []
-            if rn in {"route", "test route reroutr", "test route"}:
-                return True
-            if rid is not None and str(rid).strip() and str(rid).strip() != str(route.id):
-                return True
-            if isinstance(pts_list, list) and len(pts_list) and len(pts_list) != len(target_names):
-                return True
-            return False
-
-        for col in ("reroutr", "route_suggestion"):
+        try:
+            reroute_docs = db.collection("reroutr").get()
+        except Exception:
+            reroute_docs = []
+        for doc in reroute_docs:
+            scanned_reroutes += 1
             try:
-                docs = db.collection(col).get()
+                batch.delete(db.collection("reroutr").document(doc.id))
+                ops += 1
+                removed_reroutes += 1
+                if ops >= 350:
+                    commit_batch()
             except Exception:
                 continue
-            for doc in docs:
-                scanned_reroutes += 1
-                data = doc.to_dict() if hasattr(doc, "to_dict") else {}
-                if not isinstance(data, dict):
-                    continue
-                if not should_delete_reroute(data):
-                    continue
-                try:
-                    batch.delete(db.collection(col).document(doc.id))
-                    ops += 1
-                    removed_reroutes += 1
-                    if ops >= 350:
-                        commit_batch()
-                except Exception:
-                    continue
-
         commit_batch()
 
         predictor = GarbageRoutePredictor()
-        result = predictor.optimize_route_by_garbage_level(route.id)
-        suggested_points = result.get("suggested_points") or []
-        factors = result.get("factors") or {}
-        generated_at = result.get("generated_at") or datetime.utcnow().isoformat()
+        allowed = {
+            "sitio 6 basketball court",
+            "gulayan",
+            "sm hoa",
+            "lucas compound",
+            "justice",
+            "dumpsite",
+        }
 
-        ok = sync_optimization_to_firestore(
-            route_id=route.id,
-            route_name=route.name,
-            optimization_date=datetime.utcnow().date(),
-            suggested_points=suggested_points,
-            factors=factors,
-            generated_at=generated_at,
-        )
+        written = 0
+        failed = 0
+        first_error = None
+        for r in reports:
+            report_id = str(r.get("id") or "").strip()
+            report_col = str(r.get("__collection__") or "road_report").strip() or "road_report"
+            if not report_id:
+                continue
+
+            reroute_id = f"{report_col}_{report_id}".replace("/", "_")
+            result = predictor.optimize_route_by_garbage_level(route.id, explain=True, mirror=False, road_reports=[r])
+            suggested_points = result.get("suggested_points") or []
+            filtered = []
+            for p in suggested_points:
+                nm = str(p.get("location_name") or p.get("locationName") or "").strip().lower()
+                if nm in allowed:
+                    filtered.append(p)
+            if filtered:
+                suggested_points = filtered
+
+            payload = {
+                "id": reroute_id,
+                "route_id": route.id,
+                "routeId": str(route.id),
+                "route_name": route.name,
+                "routeName": route.name,
+                "date": datetime.utcnow().date().strftime("%Y-%m-%d"),
+                "suggested_points": list(suggested_points),
+                "suggestedPoints": list(suggested_points),
+                "factors": result.get("factors") or {},
+                "generated_at": result.get("generated_at") or datetime.utcnow().isoformat(),
+                "generatedAt": result.get("generated_at") or datetime.utcnow().isoformat(),
+                "status": "approved",
+                "road_report": dict(r),
+            }
+            trace = result.get("trace")
+            if isinstance(trace, dict):
+                payload["trace"] = trace
+
+            try:
+                db.collection("reroutr").document(reroute_id).set(payload, merge=True)
+                written += 1
+            except Exception as e:
+                failed += 1
+                if first_error is None:
+                    first_error = f"{type(e).__name__}: {e}"
 
         self.stdout.write(
             self.style.SUCCESS(
-                "Road Map data cleaned and regenerated. "
-                f"road_reports scanned={scanned_reports} removed={removed_reports}; "
-                f"reroutes scanned={scanned_reroutes} removed={removed_reroutes}; "
-                f"generated_today={'yes' if ok else 'no'}"
+                f"reroutr reset: deleted={removed_reroutes}/{scanned_reroutes} rebuilt={written}/{len(reports)} failed={failed} error={first_error or 'none'}"
             )
         )

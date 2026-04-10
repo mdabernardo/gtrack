@@ -2,7 +2,6 @@
 from typing import Optional, Sequence, Dict, Any
 from datetime import date as date_type
 from django.conf import settings
-import json
 
 try:
     import firebase_admin
@@ -180,6 +179,8 @@ def sync_optimization_to_firestore(
     suggested_points: Sequence[Dict[str, Any]],
     factors: Optional[dict] = None,
     generated_at: Optional[str] = None,
+    min_level: Optional[str] = None,
+    start_policy: Optional[str] = None,
 ) -> bool:
     """
     Mirror route optimization result into Firestore so clients can consume it.
@@ -207,29 +208,64 @@ def sync_optimization_to_firestore(
             'suggested_points': list(suggested_points),
             'factors': factors or {},
             'generated_at': generated_at,
+            'min_level': min_level,
+            'start_policy': start_policy,
             'updated_at': firestore.SERVER_TIMESTAMP if firestore else None,
         }
 
         doc_ref = db.collection('route_suggestion').document(doc_id)
         doc_ref.set(payload, merge=True)
 
-        # New 'reroutr' collection sync (as requested)
-        try:
-            reroutr_ref = db.collection('reroutr').document(doc_id)
-            
-            # Create a JSON string representation of the data
-            # Remove firestore sentinels for JSON serialization
-            safe_payload = payload.copy()
-            if 'updated_at' in safe_payload:
-                del safe_payload['updated_at']
-            
-            reroutr_payload = payload.copy()
-            reroutr_payload['data_string'] = json.dumps(safe_payload, default=str)
-            
-            reroutr_ref.set(reroutr_payload, merge=True)
-        except Exception as e:
-            print(f"Error syncing to reroutr: {e}")
+        return True
+    except Exception:
+        return False
 
+
+def sync_reroute_to_firestore(
+    reroute_id: str,
+    route_id: int,
+    route_name: str,
+    reroute_date: date_type,
+    suggested_points: Sequence[Dict[str, Any]],
+    factors: Optional[dict] = None,
+    generated_at: Optional[str] = None,
+    road_report: Optional[Dict[str, Any]] = None,
+    trace: Optional[Dict[str, Any]] = None,
+) -> bool:
+    db = _get_firestore_client()
+    if db is None:
+        return False
+
+    try:
+        iso_date = reroute_date.strftime("%Y-%m-%d")
+        doc_id = str(reroute_id or "").strip()
+        doc_id = doc_id.replace("/", "_") if doc_id else ""
+        if not doc_id:
+            return False
+
+        payload: Dict[str, Any] = {
+            "id": doc_id,
+            "route_id": route_id,
+            "routeId": str(route_id),
+            "route_name": route_name,
+            "routeName": route_name,
+            "date": iso_date,
+            "suggested_points": list(suggested_points),
+            "suggestedPoints": list(suggested_points),
+            "factors": factors or {},
+            "generated_at": generated_at,
+            "generatedAt": generated_at,
+            "status": "approved",
+            "updated_at": firestore.SERVER_TIMESTAMP if firestore else None,
+            "updatedAt": firestore.SERVER_TIMESTAMP if firestore else None,
+        }
+
+        if road_report:
+            payload["road_report"] = dict(road_report)
+        if trace:
+            payload["trace"] = dict(trace)
+
+        db.collection("reroutr").document(doc_id).set(payload, merge=True)
         return True
     except Exception:
         return False
@@ -281,7 +317,7 @@ def sync_scheduling_assistance_to_firestore(
         return False
 
 
-def fetch_garbagelevel_items() -> list:
+def fetch_garbagelevel_items(for_date: Optional[date_type] = None) -> list:
     """Fetch garbage level items from Firestore collection 'garbagelevel'.
     Returns list of dicts: {id, location, garbageLevel, latitude, longitude, ...}
     """
@@ -290,14 +326,26 @@ def fetch_garbagelevel_items() -> list:
         return []
     try:
         col = db.collection('garbagelevel')
-        # For Admin SDK: .get() returns a list of DocumentSnapshot
-        docs = col.get()
+        docs = None
+        if for_date is not None:
+            iso = for_date.strftime('%Y-%m-%d')
+            try:
+                docs = col.where('date', '==', iso).get()
+            except Exception:
+                docs = None
+        if docs is None:
+            docs = col.get()
         items = []
         for d in docs:
             data = d.to_dict() if hasattr(d, 'to_dict') else d._data  # fallback
             if not isinstance(data, dict):
                 continue
             data['id'] = d.id
+            if for_date is not None:
+                iso = for_date.strftime('%Y-%m-%d')
+                dt = str(data.get('date') or '').strip()
+                if dt and dt != iso:
+                    continue
             items.append(data)
         return items
     except Exception:
@@ -418,6 +466,8 @@ def create_firestore_notification(
     route_id: Optional[int] = None,
     disruption_type: str = "road_report",
     location_name: Optional[str] = None,
+    doc_id: Optional[str] = None,
+    extra_data: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """
     Create a notification document in Firestore 'notifications' collection so
@@ -441,7 +491,19 @@ def create_firestore_notification(
         }
         if location_name:
             payload["data"]["location_name"] = location_name
-        db.collection("notifications").add(payload)
+        if extra_data:
+            try:
+                data = dict(extra_data)
+                for k in ("kind", "subtype", "requestId", "parentRequestId", "resultNotificationId", "recipientUid", "verificationStatus", "status", "source"):
+                    if k in data:
+                        payload[k] = data.get(k)
+                payload["data"].update({k: v for k, v in data.items()})
+            except Exception:
+                pass
+        if doc_id:
+            db.collection("notifications").document(str(doc_id)).set(payload, merge=True)
+        else:
+            db.collection("notifications").add(payload)
         return True
     except Exception:
         return False

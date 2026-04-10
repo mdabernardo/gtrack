@@ -500,32 +500,11 @@
     
     <script>
         // ===============================================
-        // FIREBASE SETUP & GLOBAL VARIABLES
+        // GLOBAL VARIABLES
         // ===============================================
-        let db;
         let currentResidentId = null;
         let allResidentsCache = {}; // Cache to store ALL fetched resident data for the current status
         let currentStatus = 'Pending'; // Global variable to track the active status tab
-
-        /**
-         * 2. Initialize Firebase and Firestore using your project keys.
-         */
-        function setupFirebase() {
-            // Configuration using values from your Project Settings screenshot
-            const firebaseConfig = {
-                // WARNING: Never share your full API key publicly.
-                apiKey: "AIzaSyCwvnrLJRIS03UKI...", 
-                authDomain: "g-trackapp.firebaseapp.com", 
-                projectId: "g-trackapp", 
-                storageBucket: "g-trackapp.appspot.com",
-                messagingSenderId: "172056621672",
-                appId: "YOUR_APP_ID" 
-            };
-
-            firebase.initializeApp(firebaseConfig);
-            db = firebase.firestore();
-            console.log("Firebase initialized for g-trackapp.");
-        }
 
 
         // ===============================================
@@ -569,59 +548,62 @@
             const detailsContentElement = document.getElementById('resident-details-content');
             
             listContentElement.innerHTML = `<p id="loading-message" style="padding: 15px 20px;">Loading ${currentStatus.toLowerCase()} residents...</p>`;
-            
-            // Query for documents where verificationStatus matches the current tab
-            db.collection("residents")
-              .where("verificationStatus", "==", currentStatus)
-              .onSnapshot((snapshot) => {
-                
-                // Clear the current list displayed on the website
-                listContentElement.innerHTML = '';
-                allResidentsCache = {}; // Clear the data cache
-                
-                if (snapshot.empty) {
-                    listContentElement.innerHTML = `<p style="padding: 15px 20px;">No residents currently ${currentStatus.toLowerCase()}.</p>`;
-                    noSelectionElement.style.display = 'block';
-                    detailsContentElement.style.display = 'none';
-                    currentResidentId = null;
-                    return;
-                }
 
-                let firstResidentId = null;
-                snapshot.forEach((doc) => {
-                    const residentData = doc.data();
-                    const residentId = doc.id; 
-                    
-                    allResidentsCache[residentId] = residentData; // Cache the data
+            fetch(`/api/resident-verification/requests/?status=${encodeURIComponent(currentStatus)}`, { credentials: 'same-origin' })
+                .then(res => {
+                    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+                    return res.json();
+                })
+                .then(json => {
+                    const items = (json && json.items) ? json.items : [];
 
-                    if (firstResidentId === null) {
-                        firstResidentId = residentId; 
+                    listContentElement.innerHTML = '';
+                    allResidentsCache = {};
+
+                    if (!items.length) {
+                        listContentElement.innerHTML = `<p style="padding: 15px 20px;">No residents currently ${currentStatus.toLowerCase()}.</p>`;
+                        noSelectionElement.style.display = 'block';
+                        detailsContentElement.style.display = 'none';
+                        currentResidentId = null;
+                        return;
                     }
 
-                    // Build the HTML list item
-                    const listItem = document.createElement('div');
-                    listItem.className = 'pending-item';
-                    listItem.setAttribute('data-id', residentId);
-                    listItem.setAttribute('onclick', `loadResidentDetails('${residentId}', this)`);
-                    listItem.innerHTML = `
-                        <h4>${residentData.firstName} ${residentData.lastName}</h4>
-                        <p>${residentData.fullAddress || residentData.street + ', ' + residentData.barangay}...</p>
-                    `;
-                    
-                    listContentElement.appendChild(listItem);
+                    let firstResidentId = null;
+                    items.forEach((item) => {
+                        const residentId = item.id;
+                        allResidentsCache[residentId] = item;
+
+                        if (firstResidentId === null) {
+                            firstResidentId = residentId;
+                        }
+
+                        const resident = item.resident || {};
+                        const name = `${resident.firstName || ''} ${resident.lastName || ''}`.trim() || 'Unknown';
+                        const address = resident.fullAddress || resident.address || [resident.street, resident.barangay].filter(Boolean).join(', ') || 'N/A';
+
+                        const listItem = document.createElement('div');
+                        listItem.className = 'pending-item';
+                        listItem.setAttribute('data-id', residentId);
+                        listItem.setAttribute('onclick', `loadResidentDetails('${residentId}', this)`);
+                        listItem.innerHTML = `
+                            <h4>${name}</h4>
+                            <p>${address}</p>
+                        `;
+
+                        listContentElement.appendChild(listItem);
+                    });
+
+                    if (firstResidentId) {
+                        const firstItem = document.querySelector(`#pendingListContent .pending-item[data-id="${firstResidentId}"]`);
+                        if (firstItem) {
+                            loadResidentDetails(firstResidentId, firstItem);
+                        }
+                    }
+                })
+                .catch((error) => {
+                    console.error("Failed to load resident verification requests:", error);
+                    listContentElement.innerHTML = '<p style="padding: 15px 20px; color: red;">Error loading data.</p>';
                 });
-
-                // 4. Automatically load the first resident's details
-                if (firstResidentId) {
-                    const firstItem = document.querySelector(`#pendingListContent .pending-item[data-id="${firstResidentId}"]`);
-                    if (firstItem) {
-                        loadResidentDetails(firstResidentId, firstItem);
-                    }
-                }
-            }, (error) => {
-                console.error("Firestore real-time listener failed:", error);
-                listContentElement.innerHTML = '<p style="padding: 15px 20px; color: red;">Error loading data. Check console and security rules.</p>';
-            });
         }
 
         // ===============================================
@@ -639,9 +621,10 @@
             element.classList.add('active');
             currentResidentId = residentId; 
 
-            const data = allResidentsCache[residentId];
+            const item = allResidentsCache[residentId];
+            if (!item) return;
 
-            if (!data) return; 
+            const data = item.resident || {};
 
             // Show the details panel
             document.getElementById('no-resident-selected').style.display = 'none';
@@ -651,22 +634,23 @@
             const rejectionWrapper = document.getElementById('rejectionReasonWrapper');
             const verificationButtons = document.getElementById('verificationButtons');
             
-            if (data.verificationStatus === 'Pending') {
+            const status = item.verificationStatus || item.status || data.verificationStatus || data.status || 'Pending';
+            if (status === 'Pending') {
                 verificationButtons.classList.remove('hidden');
                 rejectionWrapper.style.display = 'none';
             } else {
                 verificationButtons.classList.add('hidden');
                 // Show rejection reason only if rejected
-                if (data.verificationStatus === 'Rejected') {
+                if (status === 'Rejected') {
                     rejectionWrapper.style.display = 'block';
-                    document.getElementById('detailRejectionReason').innerText = data.rejectionReason || 'No reason provided.';
+                    document.getElementById('detailRejectionReason').innerText = item.rejectionReason || data.rejectionReason || 'No reason provided.';
                 } else {
                     rejectionWrapper.style.display = 'none';
                 }
             }
             
             // Update the details panel fields
-            document.getElementById('detailStatus').innerText = data.verificationStatus || 'N/A';
+            document.getElementById('detailStatus').innerText = status || 'N/A';
             document.getElementById('detailFirstName').innerText = data.firstName || 'N/A';
             document.getElementById('detailLastName').innerText = data.lastName || 'N/A';
             document.getElementById('detailPhone').innerText = data.phone || 'N/A';
@@ -678,7 +662,7 @@
 
             // Update the ID picture source
             const idPicture = document.getElementById('detailIDPicture');
-            idPicture.src = data.idUrl || '';
+            idPicture.src = data.idUrl || data.idURL || data.idPhotoUrl || '';
             idPicture.alt = `ID Picture of ${data.firstName || ''} ${data.lastName || ''}`;
         }
         
@@ -712,16 +696,23 @@
                 alert("Please select a resident first.");
                 return;
             }
-            
-            const residentRef = db.collection('residents').doc(currentResidentId);
-            
+
             try {
-                // Use a batched write for multiple operations, or simple update as shown
-                await residentRef.update({
-                    verificationStatus: status,
-                    // Use Firestore command to delete the rejection reason if status is Verified
-                    rejectionReason: status === 'Rejected' ? reason : firebase.firestore.FieldValue.delete()
+                const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+                const url = status === 'Verified'
+                    ? `/api/resident-verification/${encodeURIComponent(currentResidentId)}/verify/`
+                    : `/api/resident-verification/${encodeURIComponent(currentResidentId)}/reject/`;
+                const payload = status === 'Rejected' ? { reason: reason } : {};
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload)
                 });
+                if (!res.ok) throw new Error(`Request failed: ${res.status}`);
 
                 alert(`Resident status updated to: ${status}. The list will refresh.`);
                 
@@ -763,9 +754,8 @@
         // ===============================================
         
         window.onload = function() {
-            setupFirebase();
-            // Starts by loading 'Pending' residents
-            setupRealtimeListener(); 
+            setupRealtimeListener();
+            setInterval(setupRealtimeListener, 5000);
         }
 
         // Close the dropdowns if the user clicks outside of them

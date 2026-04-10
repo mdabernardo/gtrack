@@ -7,7 +7,7 @@ from django.conf.urls.static import static
 from gtrack.views import profile_view, signup_view
 
 # Assuming your views are in gtrack/views.py
-from gtrack import views  
+from . import views  
 from rest_framework.routers import DefaultRouter
 
 # API router configuration
@@ -47,6 +47,7 @@ urlpatterns = [
     path('road-map/', views.road_map_view, name='road_map'),
     path('history/', views.history_view, name='history'),
     path('collector-schedules/', views.collector_schedules_view, name='collector_schedules'),
+    path('collector-route-suggestions/', views.collector_route_suggestions_view, name='collector_route_suggestions'),
     path('schedules/', views.schedules_view, name='schedules'),
     path('notification/', views.notification_view, name='notification'),
     path('warning/', views.warning_view, name='warning'),
@@ -74,10 +75,15 @@ urlpatterns = [
     path('api/train-model/', views.train_ai_model, name='train_model'),
     path('api/generate-notifications/', views.generate_daily_notifications, name='generate_notifications'),
     path('api/generate-verification-notifications/', views.generate_verification_notifications, name='generate_verification_notifications'),
+    path('api/resident-verification/submit/', views.resident_verification_submit, name='resident_verification_submit'),
+    path('api/resident-verification/requests/', views.resident_verification_requests, name='resident_verification_requests'),
+    path('api/resident-verification/<str:doc_id>/verify/', views.resident_verification_verify, name='resident_verification_verify'),
+    path('api/resident-verification/<str:doc_id>/reject/', views.resident_verification_reject, name='resident_verification_reject'),
     path('api/sync-predictions/', views.sync_predictions_to_firebase, name='sync_predictions'),
     path('api/routes/recompute_all/', views.recompute_all_routes, name='recompute_all_routes'),
     path('api/check-road-reports/', views.check_road_reports, name='check_road_reports'),
     path('api/approve-reroute/', views.approve_reroute, name='approve_reroute'),
+    path('api/route-suggestion/generate/', views.generate_route_suggestion, name='generate_route_suggestion'),
 
     # You can likely remove or comment out this line as you're now using custom views
     

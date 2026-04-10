@@ -1,0 +1,274 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collector Route Suggestions</title>
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0; }
+        .main { padding: 40px 20px; max-width: 1200px; margin: 0 auto; }
+        h1 { color: #1f4f0c; font-size: 2.2em; margin-bottom: 14px; }
+        .card { background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 24px; border: 1px solid #eef2f7; }
+        .controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+        select { padding: 10px 12px; border-radius: 12px; border: 1px solid #ddd; font-weight: 800; background: #fff; }
+        .btn { background: #5dbb29; color: #fff; border: 0; border-radius: 12px; padding: 10px 12px; font-weight: 900; cursor: pointer; }
+        .btn:hover { background: #4a9e22; }
+        .muted { color: #6b7280; font-weight: 700; }
+        .week-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-top: 10px; }
+        .day-btn { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; border: 1px solid #eef2f7; background: #fafafa; cursor: pointer; text-align: left; }
+        .day-btn:hover { background: #f3f4f6; }
+        .day-btn.active { background: #e5f5e0; border-color: #bfe6bf; }
+        .day-name { font-weight: 900; color: #111827; }
+        .day-date { font-weight: 800; color: #256b00; }
+        .details { margin-top: 14px; border-top: 1px solid #eef2f7; padding-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .panel { background: #fff; border: 1px solid #eef2f7; border-radius: 12px; padding: 14px; }
+        .panel-title { font-weight: 900; color: #1f4f0c; margin-bottom: 10px; }
+        .order-list { margin: 0; padding-left: 18px; }
+        .order-list li { padding: 4px 0; font-weight: 800; color: #111827; }
+        #miniMap { width: 100%; height: 360px; border-radius: 12px; border: 1px solid #eef2f7; }
+        @media (max-width: 900px) { .details { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    {% include 'partials/topbar.html' with active_tab='collector_route_suggestions' %}
+
+    <div class="main">
+        <h1>Collector Route Suggestions</h1>
+        <div class="card">
+            <div class="controls">
+                <select id="routeSelect">
+                    <option value="">Select route…</option>
+                </select>
+                <button type="button" class="btn" id="refreshBtn">Refresh</button>
+                <div class="muted" id="metaText">—</div>
+            </div>
+            <div class="week-row" id="weekRow"></div>
+            <div class="details">
+                <div class="panel">
+                    <div class="panel-title" id="detailsTitle">Suggested Order</div>
+                    <div class="muted" id="statusText">Select a date.</div>
+                    <ol class="order-list" id="orderList"></ol>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">Mini Map</div>
+                    <div id="miniMap"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.__firebase_config = '{{ firebase_config_json|escapejs }}';
+        window.__google_maps_api_key = '{{ google_maps_api_key|escapejs }}';
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|urlencode }}&libraries=places"></script>
+    <script>
+        (function () {
+            function safeStr(v) { return (v === null || v === undefined) ? '' : String(v); }
+            function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+            function mondayOfWeek(dt) {
+                var d = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+                var day = d.getDay();
+                var diff = (day === 0 ? -6 : 1) - day;
+                d.setDate(d.getDate() + diff);
+                return d;
+            }
+            function fmtIso(dt) {
+                var y = dt.getFullYear();
+                var m = String(dt.getMonth() + 1).padStart(2, '0');
+                var d = String(dt.getDate()).padStart(2, '0');
+                return y + '-' + m + '-' + d;
+            }
+            function fmtYmd(dt) {
+                var y = dt.getFullYear();
+                var m = String(dt.getMonth() + 1).padStart(2, '0');
+                var d = String(dt.getDate()).padStart(2, '0');
+                return '' + y + m + d;
+            }
+            function fmtDay(dt) { return dt.toLocaleDateString(undefined, { weekday: 'short' }); }
+            function fmtPretty(dt) { return dt.toLocaleDateString(undefined, { month: 'short', day: '2-digit' }); }
+
+            var routeSelect = document.getElementById('routeSelect');
+            var refreshBtn = document.getElementById('refreshBtn');
+            var weekRow = document.getElementById('weekRow');
+            var metaText = document.getElementById('metaText');
+            var statusText = document.getElementById('statusText');
+            var orderList = document.getElementById('orderList');
+            var detailsTitle = document.getElementById('detailsTitle');
+
+            if (!window.__firebase_config || !weekRow) return;
+            var cfg;
+            try { cfg = JSON.parse(window.__firebase_config); } catch (e) { return; }
+            try { firebase.initializeApp(cfg); } catch (e) {}
+            var db = firebase.firestore();
+
+            var selectedIso = null;
+            var weekStart = mondayOfWeek(new Date());
+            var map = null;
+            var poly = null;
+            var markers = [];
+
+            function clearMap() {
+                if (poly) { try { poly.setMap(null); } catch (e) {} }
+                poly = null;
+                if (markers && markers.length) {
+                    markers.forEach(function (m) { try { m.setMap(null); } catch (e) {} });
+                }
+                markers = [];
+            }
+            function numberIcon(n) {
+                var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32">' +
+                    '<circle cx="16" cy="16" r="12" fill="#ff3838" stroke="#b00000" stroke-width="2"/>' +
+                    '<text x="16" y="21" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#ffffff">' + String(n) + '</text>' +
+                    '</svg>';
+                return {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+                    scaledSize: new google.maps.Size(28, 28),
+                    anchor: new google.maps.Point(14, 14),
+                };
+            }
+            function ensureMap() {
+                if (map) return map;
+                map = new google.maps.Map(document.getElementById('miniMap'), {
+                    center: { lat: 14.666, lng: 120.955 },
+                    zoom: 14,
+                    mapTypeControl: true
+                });
+                return map;
+            }
+            function renderSuggestion(points) {
+                if (!orderList) return;
+                orderList.innerHTML = '';
+                clearMap();
+                if (!Array.isArray(points) || !points.length) {
+                    if (statusText) statusText.textContent = 'No route suggestion for this date.';
+                    return;
+                }
+                if (statusText) statusText.textContent = '';
+                points = points.slice().sort(function (a, b) { return (Number(a.order) || 0) - (Number(b.order) || 0); });
+                points.forEach(function (p, idx) {
+                    var li = document.createElement('li');
+                    li.innerHTML = esc(p.location_name || p.locationName || p.name || 'Point');
+                    orderList.appendChild(li);
+                });
+                var mp = ensureMap();
+                var path = [];
+                points.forEach(function (p, idx) {
+                    var lat = Number(p.latitude ?? p.lat);
+                    var lng = Number(p.longitude ?? p.lng);
+                    if (!isFinite(lat) || !isFinite(lng)) return;
+                    path.push({ lat: lat, lng: lng });
+                    var m = new google.maps.Marker({
+                        position: { lat: lat, lng: lng },
+                        map: mp,
+                        icon: numberIcon(idx + 1),
+                        title: (idx + 1) + '. ' + safeStr(p.location_name || p.name || 'Point'),
+                        zIndex: 1000 + idx
+                    });
+                    markers.push(m);
+                });
+                if (path.length) {
+                    poly = new google.maps.Polyline({ path: path, geodesic: true, strokeColor: '#ff3838', strokeOpacity: 1.0, strokeWeight: 4 });
+                    poly.setMap(mp);
+                    var b = new google.maps.LatLngBounds();
+                    path.forEach(function (ll) { b.extend(ll); });
+                    mp.fitBounds(b);
+                }
+            }
+
+            function loadRoutes() {
+                fetch('/api/routes/')
+                    .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('routes')); })
+                    .then(function (routes) {
+                        routes = Array.isArray(routes) ? routes : [];
+                        routes.forEach(function (rt) {
+                            var opt = document.createElement('option');
+                            opt.value = rt.id;
+                            opt.textContent = rt.name || ('Route ' + rt.id);
+                            routeSelect.appendChild(opt);
+                        });
+                        if (routes.length && !routeSelect.value) {
+                            routeSelect.value = String(routes[0].id);
+                            refresh();
+                        }
+                    })
+                    .catch(function () {});
+            }
+
+            function renderWeek() {
+                weekRow.innerHTML = '';
+                var mon = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
+                var isoDates = [];
+                for (var i = 0; i < 7; i++) {
+                    var dt = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i);
+                    isoDates.push(fmtIso(dt));
+                }
+                isoDates.forEach(function (iso, idx) {
+                    var dt = new Date(iso);
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    var isActive = selectedIso ? (selectedIso === iso) : (idx === 0);
+                    btn.className = 'day-btn' + (isActive ? ' active' : '');
+                    btn.dataset.iso = iso;
+                    var n = document.createElement('div');
+                    n.className = 'day-name';
+                    n.textContent = fmtDay(dt);
+                    var d = document.createElement('div');
+                    d.className = 'day-date';
+                    d.textContent = fmtPretty(dt) + ' (' + iso + ')';
+                    btn.appendChild(n);
+                    btn.appendChild(d);
+                    btn.addEventListener('click', function () {
+                        var all = weekRow.querySelectorAll('.day-btn');
+                        all.forEach(function (x) { x.classList.remove('active'); });
+                        btn.classList.add('active');
+                        selectedIso = btn.dataset.iso;
+                        refresh();
+                    });
+                    weekRow.appendChild(btn);
+                });
+                if (!selectedIso || isoDates.indexOf(selectedIso) === -1) {
+                    selectedIso = isoDates[0];
+                }
+            }
+
+            function refresh() {
+                var routeId = safeStr(routeSelect && routeSelect.value).trim();
+                if (!routeId) return;
+                if (!selectedIso) selectedIso = fmtIso(new Date());
+                var dt = new Date(selectedIso);
+                var ymd = fmtYmd(dt);
+                var docId = routeId + '_' + ymd;
+                if (metaText) metaText.textContent = 'Doc: ' + docId;
+                if (detailsTitle) detailsTitle.textContent = 'Suggested Order (' + selectedIso + ')';
+                if (statusText) statusText.textContent = 'Loading…';
+                if (orderList) orderList.innerHTML = '';
+                clearMap();
+                db.collection('route_suggestion').document(docId).get()
+                    .then(function (snap) {
+                        if (!snap.exists) {
+                            renderSuggestion([]);
+                            return;
+                        }
+                        var data = snap.data() || {};
+                        var pts = data.suggested_points || data.suggestedPoints || [];
+                        renderSuggestion(Array.isArray(pts) ? pts : []);
+                    })
+                    .catch(function () {
+                        if (statusText) statusText.textContent = 'Failed to load route suggestion.';
+                    });
+            }
+
+            if (refreshBtn) refreshBtn.addEventListener('click', refresh);
+            if (routeSelect) routeSelect.addEventListener('change', refresh);
+            renderWeek();
+            loadRoutes();
+        })();
+    </script>
+</body>
+</html>
+

@@ -7,6 +7,7 @@ from django.contrib.auth import login as django_login, logout as django_logout
 from django.conf import settings 
 import json
 import os
+import uuid
 from .models import Resident
 from userprofile.models import UserProfile
 from userprofile.forms import UserEditForm, UserProfileForm
@@ -50,6 +51,7 @@ from .firebase_sync import (
     fetch_road_reports,
     mark_road_report_processed,
     create_firestore_notification,
+    sync_reroute_to_firestore,
 )
 
 # Safe import for optional Firebase notification manager
@@ -159,8 +161,57 @@ class RouteViewSet(viewsets.ModelViewSet):
         route = self.get_object()
         explain = str(request.query_params.get('explain', '') or '').strip().lower() in ('1', 'true', 'yes')
         mirror = str(request.query_params.get('mirror', '') or '').strip().lower() not in ('0', 'false', 'no')
+        iso = request.query_params.get('date')
+        report_id = request.query_params.get('report_id') or request.query_params.get('reportId')
+        report_collection = request.query_params.get('report_collection') or request.query_params.get('reportCollection')
+        report_location = request.query_params.get('location_name') or request.query_params.get('locationName') or request.query_params.get('location')
+        min_level = request.query_params.get('min_level')
+        start_policy = request.query_params.get('start_policy') or 'highest_score'
+        opt_date = None
+        if iso:
+            try:
+                opt_date = datetime.strptime(str(iso).strip(), '%Y-%m-%d').date()
+            except Exception:
+                opt_date = None
+
+        road_reports = None
+        if report_id:
+            report_doc = None
+            if firestore:
+                try:
+                    db = firestore.client()
+                    targets = [str(report_collection)] if report_collection else ["road_reports", "road_report"]
+                    for col_name in targets:
+                        if not col_name:
+                            continue
+                        snap = db.collection(col_name).document(str(report_id)).get()
+                        if snap.exists:
+                            d = snap.to_dict() or {}
+                            if isinstance(d, dict):
+                                d = dict(d)
+                                d["id"] = snap.id
+                                d["__collection__"] = col_name
+                                report_doc = d
+                                break
+                except Exception:
+                    report_doc = None
+            if not report_doc:
+                report_doc = {
+                    "id": str(report_id),
+                    "__collection__": str(report_collection) if report_collection else None,
+                    "location": str(report_location or ""),
+                }
+            road_reports = [report_doc]
         try:
-            result = ai_predictor.optimize_route_by_garbage_level(route.id, explain=explain, mirror=mirror)
+            result = ai_predictor.optimize_route_by_garbage_level(
+                route.id,
+                explain=explain,
+                mirror=mirror,
+                road_reports=road_reports,
+                optimization_date=opt_date,
+                min_level=min_level,
+                start_policy=start_policy,
+            )
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(result)
@@ -739,7 +790,7 @@ def firebase_login(request):
 @api_view(['POST', 'GET'])
 def check_road_reports(request):
     """
-    Checks for new road reports, sends notifications, and triggers rerouting.
+    Checks for new road reports and sends notifications.
     """
     reports = fetch_road_reports(only_new=True)
     if not reports:
@@ -759,7 +810,7 @@ def check_road_reports(request):
         report_collection = report.get('__collection__')
         
         title = f"Road Alert: {loc_name}"
-        body = f"Issue reported at {loc_name}: {desc}. Rerouting in progress."
+        body = f"Issue reported at {loc_name}: {desc}. Please review in Road Map to generate an alternative route."
         
         # 1. Create Web Notifications for all residents with notifications enabled
         residents = Resident.objects.filter(notification_enabled=True)
@@ -852,68 +903,11 @@ def check_road_reports(request):
             location_name=loc_name,
         )
         
-        # Mark as processed in the originating collection
-        if report_id:
-            mark_road_report_processed(report_id, report_collection)
         processed_count += 1
         if loc_name and loc_name not in affected_locations:
             affected_locations.append(str(loc_name))
 
-    # 3. Trigger Reroute for all routes
-    routes = Route.objects.all()
-    optimized_routes = []
-    loc_label = ", ".join(affected_locations) if affected_locations else "reported road issue"
-    for route in routes:
-        try:
-            res = ai_predictor.optimize_route_by_garbage_level(route.id)
-            optimized_routes.append(res.get('route_name'))
-            reroute_title = f"Route Rerouted: {route.name}"
-            reroute_body = f"New alternative path generated due to road report near {loc_label}."
-            create_firestore_notification(
-                title=reroute_title,
-                body=reroute_body,
-                target="collectors",
-                route_id=route.id,
-                disruption_type="reroute",
-                location_name=loc_label,
-            )
-            create_firestore_notification(
-                title=reroute_title,
-                body=reroute_body,
-                target="admin",
-                route_id=route.id,
-                disruption_type="reroute",
-                location_name=loc_label,
-            )
-            for collector in collectors:
-                try:
-                    Notification.objects.create(
-                        user=collector.user,
-                        type='change',
-                        title=reroute_title,
-                        message=reroute_body
-                    )
-                except Exception:
-                    pass
-            for admin in admin_users:
-                try:
-                    Notification.objects.create(
-                        user=admin,
-                        type='change',
-                        title=reroute_title,
-                        message=reroute_body
-                    )
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    return Response({
-        'status': 'processed',
-        'reports_count': processed_count,
-        'notifications_sent': notifications_sent,
-        'rerouted_routes': optimized_routes
-    })
+    return Response({'status': 'processed', 'reports_count': processed_count, 'notifications_sent': notifications_sent})
 
 @api_view(['POST', 'GET'])
 def approve_reroute(request):
@@ -925,6 +919,11 @@ def approve_reroute(request):
         route_id_int = None
     route_name = data.get('route_name') or data.get('routeName') or 'Main Route'
     location_name = data.get('location_name') or data.get('locationName') or data.get('location') or 'multiple locations'
+    report_id = data.get('report_id') or data.get('reportId') or data.get('road_report_id')
+    report_collection = data.get('report_collection') or data.get('reportCollection') or data.get('road_report_collection')
+    iso_date = data.get('date') or data.get('reroute_date') or data.get('rerouteDate')
+    handoff = str(data.get('handoff') or data.get('truck_full') or '').strip().lower() in ('1', 'true', 'yes')
+    full_collector_id = str(data.get('full_collector_id') or data.get('collector_id') or '1').strip() or '1'
 
     title = f"Route Rerouted: {route_name}"
     body = f"New route approved due to road report near {location_name}. Please follow the updated path."
@@ -935,6 +934,212 @@ def approve_reroute(request):
 
     created_web = 0
     pushed = 0
+
+    reroute_written = False
+    handoff_applied = False
+    handoff_summary = None
+    try:
+        if route_id_int is not None and report_id:
+            route_obj = Route.objects.filter(id=route_id_int).first()
+            if route_obj:
+                route_name = route_obj.name or route_name
+            reroute_date = timezone.localdate()
+            if iso_date:
+                try:
+                    reroute_date = datetime.strptime(str(iso_date).strip(), '%Y-%m-%d').date()
+                except Exception:
+                    reroute_date = timezone.localdate()
+            report_doc = None
+            if firestore and report_id:
+                try:
+                    db = firestore.client()
+                    targets = [str(report_collection)] if report_collection else ["road_reports", "road_report"]
+                    for col_name in targets:
+                        if not col_name:
+                            continue
+                        snap = db.collection(col_name).document(str(report_id)).get()
+                        if snap.exists:
+                            d = snap.to_dict() or {}
+                            if isinstance(d, dict):
+                                d = dict(d)
+                                d["id"] = snap.id
+                                d["__collection__"] = col_name
+                                report_doc = d
+                                break
+                except Exception:
+                    report_doc = None
+
+            if not report_doc:
+                report_doc = {"id": str(report_id), "__collection__": str(report_collection) if report_collection else None, "location": str(location_name)}
+
+            result = ai_predictor.optimize_route_by_garbage_level(
+                route_id_int,
+                explain=True,
+                mirror=False,
+                road_reports=[report_doc],
+            )
+            suggested_points = result.get("suggested_points") or []
+            factors = result.get("factors") or {}
+            generated_at = result.get("generated_at")
+            trace = result.get("trace")
+
+            allowed = {
+                "sitio 6 basketball court",
+                "gulayan",
+                "sm hoa",
+                "lucas compound",
+                "justice",
+                "dumpsite",
+            }
+            filtered = []
+            for p in suggested_points:
+                nm = str(p.get("location_name") or p.get("locationName") or "").strip().lower()
+                if nm in allowed:
+                    filtered.append(p)
+            if filtered:
+                suggested_points = filtered
+
+            rr = dict(report_doc) if isinstance(report_doc, dict) else {}
+            rr.setdefault("id", str(report_id))
+            rr.setdefault("__collection__", str(report_collection) if report_collection else None)
+            if request.user and getattr(request.user, "is_authenticated", False):
+                rr["approved_by"] = str(getattr(request.user, "username", "") or "")
+            reroute_id = f"{rr.get('__collection__') or 'road_report'}_{rr.get('id') or report_id}"
+            reroute_id = str(reroute_id).replace("/", "_")
+
+            reroute_written = sync_reroute_to_firestore(
+                reroute_id=reroute_id,
+                route_id=route_id_int,
+                route_name=route_name,
+                reroute_date=reroute_date,
+                suggested_points=suggested_points,
+                factors=factors,
+                generated_at=generated_at,
+                road_report=rr,
+                trace=trace if isinstance(trace, dict) else None,
+            )
+
+            if handoff and firestore:
+                try:
+                    db = firestore.client()
+                    ymd = reroute_date.strftime("%Y%m%d")
+                    other_collector_id = "2" if full_collector_id == "1" else "1"
+                    doc_full_id = f"{route_id_int}_{ymd}_{full_collector_id}"
+                    doc_other_id = f"{route_id_int}_{ymd}_{other_collector_id}"
+
+                    stops = []
+                    for p in suggested_points:
+                        nm = str(p.get("location_name") or p.get("locationName") or p.get("name") or "").strip()
+                        if not nm:
+                            continue
+                        try:
+                            score_val = float(p.get("score") or 0.0)
+                        except Exception:
+                            score_val = 0.0
+                        try:
+                            lat_val = float(p.get("latitude") or 0.0)
+                            lng_val = float(p.get("longitude") or 0.0)
+                        except Exception:
+                            lat_val = 0.0
+                            lng_val = 0.0
+                        stops.append({
+                            "name": nm,
+                            "latitude": lat_val,
+                            "longitude": lng_val,
+                            "garbageLevel": int(round(score_val)),
+                        })
+
+                    split_idx = None
+                    total = 0.0
+                    threshold = 240.0
+                    for i, st in enumerate(stops):
+                        total += float(st.get("garbageLevel") or 0.0)
+                        if total >= threshold:
+                            split_idx = i + 1
+                            break
+                    if split_idx is None:
+                        split_idx = max(1, int((len(stops) + 1) / 2))
+                    split_idx = min(split_idx, len(stops))
+
+                    full_stops = stops[:split_idx]
+                    remaining_stops = stops[split_idx:]
+                    if remaining_stops:
+                        start_minutes = 6 * 60
+                        for i, st in enumerate(full_stops):
+                            tmin = start_minutes + (i * 50)
+                            hh = int(tmin // 60) % 24
+                            mm = int(tmin % 60)
+                            st["plannedTime"] = datetime(2000, 1, 1, hh, mm).strftime("%I:%M %p")
+                        for i, st in enumerate(remaining_stops):
+                            tmin = start_minutes + (i * 50)
+                            hh = int(tmin // 60) % 24
+                            mm = int(tmin % 60)
+                            st["plannedTime"] = datetime(2000, 1, 1, hh, mm).strftime("%I:%M %p")
+
+                        handoff_id = f"handoff_{reroute_id}"
+                        db.collection("collector_schedules").document(doc_full_id).set({
+                            "date": reroute_date.strftime("%Y-%m-%d"),
+                            "dayName": reroute_date.strftime("%A"),
+                            "dayIndex": int(reroute_date.weekday()),
+                            "routeId": str(route_id_int),
+                            "routeName": route_name,
+                            "collectorId": str(full_collector_id),
+                            "status": "full",
+                            "capacity_percent": 100,
+                            "recommended_action": "go_to_dropoff_then_delegate",
+                            "pickupPlan": {
+                                "dominantLocation": "Dumpsite",
+                                "locations": full_stops,
+                            },
+                            "handoff": {
+                                "active": True,
+                                "handoffId": handoff_id,
+                                "handoffTo": str(other_collector_id),
+                                "reason": "truck_full",
+                                "rerouteId": reroute_id,
+                                "reportId": str(report_id),
+                                "remainingStopsCount": int(len(remaining_stops)),
+                            },
+                            "updatedAt": datetime.utcnow(),
+                        }, merge=True)
+
+                        db.collection("collector_schedules").document(doc_other_id).set({
+                            "date": reroute_date.strftime("%Y-%m-%d"),
+                            "dayName": reroute_date.strftime("%A"),
+                            "dayIndex": int(reroute_date.weekday()),
+                            "routeId": str(route_id_int),
+                            "routeName": route_name,
+                            "collectorId": str(other_collector_id),
+                            "status": "scheduled",
+                            "pickupPlan": {
+                                "dominantLocation": "Dumpsite",
+                                "locations": remaining_stops,
+                            },
+                            "handoff": {
+                                "active": True,
+                                "handoffId": handoff_id,
+                                "handoffFrom": str(full_collector_id),
+                                "reason": "truck_full",
+                                "rerouteId": reroute_id,
+                                "reportId": str(report_id),
+                                "assignedStopsCount": int(len(remaining_stops)),
+                            },
+                            "updatedAt": datetime.utcnow(),
+                        }, merge=True)
+
+                        handoff_applied = True
+                        handoff_summary = {
+                            "handoffId": handoff_id,
+                            "fullCollectorId": str(full_collector_id),
+                            "otherCollectorId": str(other_collector_id),
+                            "fullStopsCount": int(len(full_stops)),
+                            "remainingStopsCount": int(len(remaining_stops)),
+                        }
+                except Exception:
+                    handoff_applied = False
+                    handoff_summary = None
+    except Exception:
+        reroute_written = False
 
     for res in residents:
         try:
@@ -1011,6 +1216,12 @@ def approve_reroute(request):
         location_name=str(location_name),
     )
 
+    if report_id:
+        try:
+            mark_road_report_processed(str(report_id), str(report_collection) if report_collection else None)
+        except Exception:
+            pass
+
     return Response({
         'status': 'ok',
         'route_id': route_id_int,
@@ -1018,6 +1229,9 @@ def approve_reroute(request):
         'location_name': location_name,
         'web_notifications_created': created_web,
         'push_notifications_sent': pushed,
+        'reroute_written': bool(reroute_written),
+        'handoff_applied': bool(handoff_applied),
+        'handoff': handoff_summary,
     })
 
 
@@ -1339,6 +1553,19 @@ def collector_schedules_view(request):
     return render(request, 'collector_schedules.html', context)
 
 @login_required
+def collector_route_suggestions_view(request):
+    app_id = settings.FIREBASE_CLIENT_CONFIG.get('projectId', 'g-trackapp')
+    firebase_config_json = json.dumps(settings.FIREBASE_CLIENT_CONFIG)
+    google_maps_api_key = settings.FIREBASE_CLIENT_CONFIG.get('apiKey', '')
+    context = {
+        'active_tab': 'collector_route_suggestions',
+        'firebase_config_json': firebase_config_json,
+        'app_id': app_id,
+        'google_maps_api_key': google_maps_api_key,
+    }
+    return render(request, 'collector_route_suggestions.html', context)
+
+@login_required
 def notification_view(request):
     app_id = settings.FIREBASE_CLIENT_CONFIG.get('projectId', 'g-trackapp')
     firebase_config_json = json.dumps(settings.FIREBASE_CLIENT_CONFIG)
@@ -1397,6 +1624,8 @@ def resident_verification_view(request):
     Renders the resident verification page for the admin.
     Fetches residents who are not yet verified.
     """
+    if not getattr(request.user, "is_staff", False):
+        return redirect('dashboard')
     unverified_residents = Resident.objects.filter(is_verified=False)
     context = {
         'unverified_residents': unverified_residents
@@ -1734,23 +1963,450 @@ def sync_predictions_to_firebase(request):
 @api_view(['POST'])
 def generate_verification_notifications(request):
     """Create admin notifications for residents pending verification."""
-    unverified = Resident.objects.filter(is_verified=False)
+    pending_count = 0
+    try:
+        if firestore and getattr(firebase_admin, "_apps", None):
+            db = firestore.client()
+            docs = db.collection("notifications").where("kind", "==", "resident_verification").where("subtype", "==", "request").get()
+            for doc in docs:
+                data = doc.to_dict() if hasattr(doc, "to_dict") else {}
+                if not isinstance(data, dict):
+                    continue
+                st = data.get("verificationStatus") or data.get("status") or ((data.get("data") or {}).get("verificationStatus")) or ((data.get("data") or {}).get("status")) or "Pending"
+                if str(st).lower() == "pending":
+                    pending_count += 1
+        else:
+            pending_count = Resident.objects.filter(is_verified=False).count()
+    except Exception:
+        pending_count = Resident.objects.filter(is_verified=False).count()
+
     admin_users = User.objects.filter(is_staff=True)
     created = 0
     for admin in admin_users:
-        count = unverified.count()
+        count = int(pending_count)
         if count == 0:
             continue
         title = 'Pending Resident Verifications'
         message = f'There are {count} residents awaiting verification.'
         Notification.objects.create(
             user=admin,
-            type='general',
+            type='verification',
             title=title,
             message=message,
         )
+        try:
+            create_firestore_notification(
+                title=title,
+                body=message,
+                target="admin",
+                route_id=None,
+                disruption_type="resident_verification",
+                doc_id=f"resident_verification_pending_{timezone.localdate().strftime('%Y%m%d')}",
+                extra_data={"pending_count": int(count)},
+            )
+        except Exception:
+            pass
         created += 1
-    return Response({'status': 'ok', 'created': created, 'pending_count': unverified.count()})
+    return Response({'status': 'ok', 'created': created, 'pending_count': int(pending_count)})
+
+
+@api_view(['POST'])
+def resident_verification_submit(request):
+    if not firestore:
+        return Response({'status': 'error', 'message': 'Firestore not available'}, status=500)
+
+    token = ""
+    try:
+        auth_header = request.headers.get("Authorization") or ""
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+    except Exception:
+        token = ""
+
+    if not token:
+        return Response({'status': 'forbidden'}, status=401)
+
+    if not getattr(firebase_admin, "_apps", None):
+        return Response({'status': 'error', 'message': 'Firebase Admin SDK not initialized'}, status=500)
+
+    try:
+        decoded = auth.verify_id_token(token)
+        uid = decoded.get("uid") or ""
+    except Exception:
+        return Response({'status': 'forbidden'}, status=401)
+
+    if not uid:
+        return Response({'status': 'error', 'message': 'Missing uid'}, status=400)
+
+    resident = {}
+    try:
+        resident = dict(request.data or {})
+    except Exception:
+        resident = {}
+
+    request_id = f"RVREQ_{uuid.uuid4().hex[:16]}"
+
+    create_firestore_notification(
+        title="Resident Verification",
+        body="A resident verification request was submitted.",
+        target="admin",
+        disruption_type="resident_verification_request",
+        doc_id=request_id,
+        extra_data={
+            "kind": "resident_verification",
+            "subtype": "request",
+            "requestId": request_id,
+            "recipientUid": uid,
+            "verificationStatus": "Pending",
+            "status": "Pending",
+            "source": "mobile",
+            "resident": resident,
+            "resultNotificationId": None,
+        },
+    )
+
+    return Response({'status': 'ok', 'requestId': request_id})
+
+
+@api_view(['GET'])
+def resident_verification_requests(request):
+    if not (request.user and request.user.is_authenticated and request.user.is_staff):
+        return Response({'status': 'forbidden'}, status=403)
+
+    if not firestore:
+        return Response({'status': 'error', 'message': 'Firestore not available'}, status=500)
+
+    status_filter = (request.GET.get("status") or "Pending").strip()
+
+    if not getattr(firebase_admin, "_apps", None):
+        return Response({'status': 'error', 'message': 'Firebase Admin SDK not initialized'}, status=500)
+
+    try:
+        db = firestore.client()
+        results_by_id = {}
+
+        try:
+            docs = db.collection("notifications").where("kind", "==", "resident_verification").where("subtype", "==", "request").get()
+            for d in docs:
+                results_by_id[d.id] = d
+        except Exception:
+            pass
+
+        try:
+            docs = db.collection("notifications").where("data.disruption_type", "==", "resident_verification_request").get()
+            for d in docs:
+                results_by_id[d.id] = d
+        except Exception:
+            pass
+
+        if not results_by_id:
+            try:
+                docs = db.collection("notifications").where("data.kind", "==", "resident_verification").where("data.subtype", "==", "request").get()
+                for d in docs:
+                    results_by_id[d.id] = d
+            except Exception:
+                pass
+
+        try:
+            legacy_docs = db.collection("resident_verification").get()
+        except Exception:
+            legacy_docs = []
+
+        for legacy in legacy_docs:
+            try:
+                legacy_id = str(getattr(legacy, "id", "") or "").strip()
+                legacy_data = legacy.to_dict() or {}
+                if not legacy_id or not isinstance(legacy_data, dict):
+                    continue
+
+                request_id = legacy_id
+                if not request_id.startswith("RVREQ_"):
+                    request_id = f"RVREQ_{legacy_id}"
+
+                if request_id in results_by_id:
+                    continue
+
+                status_value = str(
+                    legacy_data.get("verificationStatus")
+                    or legacy_data.get("status")
+                    or "Pending"
+                )
+
+                recipient_uid = (
+                    legacy_data.get("uid")
+                    or legacy_data.get("userId")
+                    or legacy_data.get("resident_ID")
+                    or legacy_data.get("residentId")
+                    or ""
+                )
+
+                payload = {
+                    "title": "Resident Verification",
+                    "body": "A resident verification request was submitted.",
+                    "target": "admin",
+                    "isRead": False,
+                    "read": False,
+                    "timestamp": firestore.SERVER_TIMESTAMP if firestore else None,
+                    "kind": "resident_verification",
+                    "subtype": "request",
+                    "requestId": request_id,
+                    "recipientUid": str(recipient_uid or ""),
+                    "verificationStatus": status_value,
+                    "status": status_value,
+                    "rejectionReason": legacy_data.get("rejectionReason"),
+                    "source": "legacy_resident_verification",
+                    "legacyDocId": legacy_id,
+                    "resultNotificationId": None,
+                    "data": {
+                        "disruption_type": "resident_verification_request",
+                        "resident": legacy_data,
+                    },
+                }
+                db.collection("notifications").document(request_id).set(payload, merge=True)
+
+                try:
+                    results_by_id[request_id] = db.collection("notifications").document(request_id).get()
+                except Exception:
+                    pass
+            except Exception:
+                continue
+
+        items = []
+        for doc_id, snap in results_by_id.items():
+            data = snap.to_dict() or {}
+            if not isinstance(data, dict):
+                continue
+
+            status_value = (
+                data.get("verificationStatus")
+                or data.get("status")
+                or ((data.get("data") or {}).get("verificationStatus"))
+                or ((data.get("data") or {}).get("status"))
+                or "Pending"
+            )
+
+            if status_filter.lower() != "all" and str(status_value).lower() != status_filter.lower():
+                continue
+
+            resident = (data.get("data") or {}).get("resident") or data.get("resident") or {}
+            if not isinstance(resident, dict):
+                resident = {}
+
+            ts = data.get("timestamp")
+            try:
+                created_at = ts.isoformat() if hasattr(ts, "isoformat") else None
+            except Exception:
+                created_at = None
+
+            items.append({
+                "id": doc_id,
+                "requestId": data.get("requestId") or doc_id,
+                "resultNotificationId": data.get("resultNotificationId") or (data.get("data") or {}).get("resultNotificationId"),
+                "recipientUid": data.get("recipientUid") or (data.get("data") or {}).get("recipientUid") or resident.get("uid") or resident.get("userId"),
+                "status": status_value,
+                "verificationStatus": status_value,
+                "rejectionReason": data.get("rejectionReason") or (data.get("data") or {}).get("rejectionReason"),
+                "resident": resident,
+                "createdAt": created_at,
+            })
+
+        def _sort_key(x):
+            v = x.get("createdAt") or ""
+            return v
+
+        items.sort(key=_sort_key, reverse=True)
+        return Response({'status': 'ok', 'count': len(items), 'items': items})
+    except Exception as e:
+        return Response({'status': 'error', 'message': str(e)}, status=500)
+
+
+@api_view(['POST'])
+def resident_verification_verify(request, doc_id: str):
+    if not (request.user and request.user.is_authenticated and request.user.is_staff):
+        return Response({'status': 'forbidden'}, status=403)
+
+    if not firestore:
+        return Response({'status': 'error', 'message': 'Firestore not available'}, status=500)
+
+    try:
+        db = firestore.client()
+        notif_ref = db.collection("notifications").document(str(doc_id))
+        snap = notif_ref.get()
+        data = snap.to_dict() or {} if snap.exists else {}
+        if not isinstance(data, dict):
+            data = {}
+
+        recipient_uid = data.get("recipientUid") or (data.get("data") or {}).get("recipientUid") or (data.get("data") or {}).get("uid") or data.get("uid")
+        resident = (data.get("data") or {}).get("resident") or {}
+        if isinstance(resident, dict) and not recipient_uid:
+            recipient_uid = resident.get("uid") or resident.get("userId")
+
+        if snap.exists:
+            notif_ref.set(
+                {
+                    "verificationStatus": "Verified",
+                    "status": "Verified",
+                    "verifiedAt": firestore.SERVER_TIMESTAMP,
+                    "rejectionReason": firestore.DELETE_FIELD,
+                    "decidedAt": firestore.SERVER_TIMESTAMP,
+                    "decidedBy": (request.user.email or request.user.username or ""),
+                },
+                merge=True,
+            )
+        else:
+            return Response({'status': 'not_found'}, status=404)
+
+        title = "Resident Verification"
+        body = "Your account has been verified."
+        result_notification_id = f"resident_verification_result_{doc_id}"
+        create_firestore_notification(
+            title=title,
+            body=body,
+            target="resident",
+            disruption_type="resident_verification_result",
+            doc_id=result_notification_id,
+            extra_data={
+                "kind": "resident_verification",
+                "subtype": "result",
+                "requestId": data.get("requestId") or str(doc_id),
+                "parentRequestId": str(doc_id),
+                "recipientUid": recipient_uid or "",
+                "verificationId": str(doc_id),
+                "verificationStatus": "Verified",
+                "recipient_id": recipient_uid or str(doc_id),
+                "recipient": recipient_uid or "",
+            },
+        )
+        try:
+            notif_ref.set({"resultNotificationId": result_notification_id}, merge=True)
+        except Exception:
+            pass
+
+        try:
+            token = (data.get("data") or {}).get("fcmToken") or (data.get("data") or {}).get("fcm_token") or resident.get("fcmToken") if isinstance(resident, dict) else None
+            if token and firebase_manager:
+                firebase_manager.send_push_notification(token, title, body, data={"requestId": data.get("requestId") or str(doc_id), "verificationStatus": "Verified"})
+        except Exception:
+            pass
+
+        return Response({'status': 'ok'})
+    except Exception as e:
+        return Response({'status': 'error', 'message': str(e)}, status=500)
+
+
+@api_view(['POST'])
+def resident_verification_reject(request, doc_id: str):
+    if not (request.user and request.user.is_authenticated and request.user.is_staff):
+        return Response({'status': 'forbidden'}, status=403)
+
+    if not firestore:
+        return Response({'status': 'error', 'message': 'Firestore not available'}, status=500)
+
+    reason = None
+    try:
+        reason = (request.data or {}).get("reason")
+    except Exception:
+        reason = None
+
+    try:
+        db = firestore.client()
+        notif_ref = db.collection("notifications").document(str(doc_id))
+        snap = notif_ref.get()
+        data = snap.to_dict() or {} if snap.exists else {}
+        if not isinstance(data, dict):
+            data = {}
+
+        recipient_uid = data.get("recipientUid") or (data.get("data") or {}).get("recipientUid") or (data.get("data") or {}).get("uid") or data.get("uid")
+        resident = (data.get("data") or {}).get("resident") or {}
+        if isinstance(resident, dict) and not recipient_uid:
+            recipient_uid = resident.get("uid") or resident.get("userId")
+
+        if snap.exists:
+            update = {
+                "verificationStatus": "Rejected",
+                "status": "Rejected",
+                "rejectedAt": firestore.SERVER_TIMESTAMP,
+                "decidedAt": firestore.SERVER_TIMESTAMP,
+                "decidedBy": (request.user.email or request.user.username or ""),
+            }
+            if reason:
+                update["rejectionReason"] = str(reason)
+            notif_ref.set(update, merge=True)
+        else:
+            return Response({'status': 'not_found'}, status=404)
+
+        title = "Resident Verification"
+        body = "Your account verification was rejected."
+        if reason:
+            body = f"Your account verification was rejected: {reason}"
+
+        result_notification_id = f"resident_verification_result_{doc_id}"
+        create_firestore_notification(
+            title=title,
+            body=body,
+            target="resident",
+            disruption_type="resident_verification_result",
+            doc_id=result_notification_id,
+            extra_data={
+                "kind": "resident_verification",
+                "subtype": "result",
+                "requestId": data.get("requestId") or str(doc_id),
+                "parentRequestId": str(doc_id),
+                "recipientUid": recipient_uid or "",
+                "verificationId": str(doc_id),
+                "verificationStatus": "Rejected",
+                "recipient_id": recipient_uid or str(doc_id),
+                "recipient": recipient_uid or "",
+                "rejectionReason": str(reason) if reason else None,
+            },
+        )
+        try:
+            notif_ref.set({"resultNotificationId": result_notification_id}, merge=True)
+        except Exception:
+            pass
+
+        try:
+            token = (data.get("data") or {}).get("fcmToken") or (data.get("data") or {}).get("fcm_token") or resident.get("fcmToken") if isinstance(resident, dict) else None
+            if token and firebase_manager:
+                firebase_manager.send_push_notification(token, title, body, data={"requestId": data.get("requestId") or str(doc_id), "verificationStatus": "Rejected", "rejectionReason": str(reason) if reason else ""})
+        except Exception:
+            pass
+
+        return Response({'status': 'ok'})
+    except Exception as e:
+        return Response({'status': 'error', 'message': str(e)}, status=500)
+
+
+@api_view(['POST'])
+def generate_route_suggestion(request):
+    if not (request.user and request.user.is_authenticated and request.user.is_staff):
+        return Response({'status': 'forbidden'}, status=403)
+
+    route_id = request.data.get('route_id') or request.query_params.get('route_id')
+    date_str = request.data.get('date') or request.query_params.get('date')
+    min_level = request.data.get('min_level') or request.query_params.get('min_level')
+    start_policy = request.data.get('start_policy') or request.query_params.get('start_policy') or 'rotate'
+
+    try:
+        route_id_int = int(route_id)
+    except Exception:
+        return Response({'status': 'error', 'message': 'route_id is required'}, status=400)
+
+    try:
+        target_date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else timezone.localdate()
+    except Exception:
+        target_date = timezone.localdate()
+
+    predictor = GarbageRoutePredictor()
+    result = predictor.optimize_route_by_garbage_level(
+        route_id_int,
+        explain=True,
+        mirror=True,
+        optimization_date=target_date,
+        min_level=min_level,
+        start_policy=start_policy,
+    )
+    return Response({'status': 'ok', 'doc_id': f"{route_id_int}_{target_date.strftime('%Y%m%d')}", 'result': result})
 
 @api_view(['POST'])
 def recompute_all_routes(request):

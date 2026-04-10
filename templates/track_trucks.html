@@ -327,9 +327,12 @@
               optRouteSel.appendChild(og);
             }
 
+            function displayName(obj, fallback){
+              const cands = [obj?.location_name, obj?.locationName, obj?.name, obj?.location, obj?.site, obj?.dropoffName, fallback];
+              return (cands.find(v=>typeof v==='string' && v.trim().length) || '').trim();
+            }
             function normalizeName(obj, fallback){
-              const cands = [obj?.locationName, obj?.name, obj?.location, obj?.site, obj?.dropoffName, fallback];
-              return (cands.find(v=>typeof v==='string' && v.trim().length) || '').toLowerCase();
+              return displayName(obj, fallback).toLowerCase();
             }
             function getLatLng(obj){
               const lat = obj?.lat ?? obj?.latitude ?? obj?.coords?.lat;
@@ -419,6 +422,7 @@
             }
 
             let optMap, optPoly;
+            let optMarkers = [];
             const CATMON_URL = 'https://maps.app.goo.gl/cBs6SBAjcMHB8P2W8';
             function tryParseLatLngFromUrl(u){
               try{
@@ -455,13 +459,49 @@
               geocodeCatmonAndCenter(optMap);
               return optMap;
             }
+            function clearOptMarkers(){
+              if(Array.isArray(optMarkers)){
+                optMarkers.forEach(m=>{ try{ m.setMap(null); }catch(e){} });
+              }
+              optMarkers = [];
+            }
+            function numberIcon(n){
+              const txt = String(n);
+              const svg = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32">
+                  <circle cx="16" cy="16" r="12" fill="#ff3838" stroke="#b00000" stroke-width="2"/>
+                  <text x="16" y="21" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#ffffff">${txt}</text>
+                </svg>`;
+              return {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+                scaledSize: new google.maps.Size(28, 28),
+                anchor: new google.maps.Point(14, 14),
+              };
+            }
             function renderOpt(points){
-              optListEl.innerHTML = points.map((p,i)=>`<div>${i+1}. ${p.name} — (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})</div>`).join('');
+              optListEl.innerHTML = points.map((p,i)=>{
+                const nm = displayName(p, 'Point') || 'Point';
+                return `<div>${i+1}. ${nm} — (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})</div>`;
+              }).join('');
               const map2 = ensureOptMap();
               const path = points.map(p=>({lat:p.lat,lng:p.lng}));
-              if(optPoly){optPoly.setMap(null);} if(!path.length) return;
-              optPoly = new google.maps.Polyline({path, geodesic:true, strokeColor:'#22c55e', strokeOpacity:1.0, strokeWeight:4});
+              // clear previous
+              if(optPoly){optPoly.setMap(null);}
+              clearOptMarkers();
+              if(!path.length) return;
+              // draw red path
+              optPoly = new google.maps.Polyline({path, geodesic:true, strokeColor:'#ff3838', strokeOpacity:1.0, strokeWeight:4});
               optPoly.setMap(map2);
+              // numbered markers
+              points.forEach((p, idx)=>{
+                const m = new google.maps.Marker({
+                  position: {lat:p.lat, lng:p.lng},
+                  map: map2,
+                  icon: numberIcon(idx+1),
+                  title: `${idx+1}. ${displayName(p,'Point')||'Point'}`
+                });
+                optMarkers.push(m);
+              });
               const b = new google.maps.LatLngBounds(); path.forEach(ll=>b.extend(ll)); map2.fitBounds(b);
             }
 
@@ -483,10 +523,11 @@
 
             async function renderDirections(points){
               const origin = getDepotLatLng(points);
-              if(!points.length){ optTotalEl.textContent='0.00 km total'; if(optPoly) optPoly.setMap(null); return; }
+              if(!points.length){ optTotalEl.textContent='0.00 km total'; if(optPoly) optPoly.setMap(null); clearOptMarkers(); return; }
               const ds = new google.maps.DirectionsService();
               const map2 = ensureOptMap();
-              if(optPoly){optPoly.setMap(null);} // clear
+              // Do NOT clear previous shapes until we have a successful route,
+              // so the user still sees the red line and numbers as fallback.
               let totalMeters = 0;
               let polylinePath = [];
               let chunkStart = 0;
@@ -511,9 +552,21 @@
                 chunkStart += chunk.length;
               }
               if(polylinePath.length){
-                optPoly = new google.maps.Polyline({path: polylinePath, geodesic:true, strokeColor:'#22c55e', strokeOpacity:1.0, strokeWeight:4});
+                if(optPoly){optPoly.setMap(null);}
+                clearOptMarkers();
+                optPoly = new google.maps.Polyline({path: polylinePath, geodesic:true, strokeColor:'#ff3838', strokeOpacity:1.0, strokeWeight:4});
                 optPoly.setMap(map2);
                 const b = new google.maps.LatLngBounds(); polylinePath.forEach(ll=>b.extend(new google.maps.LatLng(ll.lat,ll.lng))); map2.fitBounds(b);
+                points.forEach((p, idx)=>{
+                  const m = new google.maps.Marker({
+                    position: {lat:p.lat, lng:p.lng},
+                    map: map2,
+                    icon: numberIcon(idx+1),
+                    title: `${idx+1}. ${displayName(p,'Point')||'Point'}`,
+                    zIndex: 1000 + idx
+                  });
+                  optMarkers.push(m);
+                });
               }
               optTotalEl.textContent = `${(totalMeters/1000).toFixed(2)} km total`;
             }
@@ -537,7 +590,7 @@
                   if(!ll) return;
                   pts.push({
                     id: doc.id,
-                    name: normalizeName(d.locationName||d.name||d.label||doc.id),
+                    name: displayName(d, doc.id),
                     lat: ll.lat,
                     lng: ll.lng,
                     area: readArea(d)
@@ -559,7 +612,7 @@
                   const lvl = readLevel(d);
                   list.push({
                     id: doc.id,
-                    name: normalizeName(d.locationName||d.name||d.label||doc.id),
+                    name: displayName(d, doc.id),
                     lat: ll?.lat,
                     lng: ll?.lng,
                     level: lvl,
@@ -652,7 +705,13 @@
               const res = await fetch(`/api/routes/${id}/optimize/`);
               if(!res.ok){ optListEl.innerHTML = '<div class="muted">Failed to optimize via API.</div>'; optTotalEl.textContent='0.00 km total'; return; }
               const data = await res.json();
-              const pts = (data.suggested_points||[]).map(p=>({name:p.name||p.label||p.id, lat:p.lat||p.latitude, lng:p.lng||p.longitude})).filter(p=>p.lat&&p.lng);
+              const pts = (data.suggested_points||[])
+                .map(p=>({
+                  name: displayName(p, p.id),
+                  lat: p.lat || p.latitude,
+                  lng: p.lng || p.longitude
+                }))
+                .filter(p=>p.lat&&p.lng);
               let ordered = pts;
               ordered = twoOpt(ordered);
               renderOpt(ordered);

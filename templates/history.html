@@ -61,7 +61,6 @@
                                 <th>End</th>
                                 <th>Weather</th>
                                 <th>Traffic</th>
-                                <th>Notes</th>
                             </tr>
                         </thead>
                         <tbody id="historyBody"></tbody>
@@ -135,14 +134,12 @@
                             var et = esc(x.end_time || '');
                             var w = esc(x.weather_condition || '—');
                             var t = esc(x.traffic_condition || '—');
-                            var n = esc(x.notes || '—');
                             return '<tr>' +
                                 '<td>' + d + '</td>' +
                                 '<td>' + st + '</td>' +
                                 '<td>' + (et || '—') + '</td>' +
                                 '<td>' + w + '</td>' +
                                 '<td>' + t + '</td>' +
-                                '<td>' + n + '</td>' +
                             '</tr>';
                         }).join('');
                         if (table) table.style.display = '';

@@ -121,7 +121,13 @@
       const res = await fetch(`/api/routes/${id}/optimize/`);
       if(!res.ok){ renderList([],0,'Failed to optimize via API'); return; }
       const data = await res.json();
-      const pts = (data.suggested_points||[]).map(p=>({name:p.name||p.label||p.id, lat:p.lat||p.latitude, lng:p.lng||p.longitude})).filter(p=>p.lat&&p.lng);
+      const pts = (data.suggested_points||[])
+        .map(p=>({
+          name: p.location_name || p.locationName || p.name || p.label || p.id || p.location || 'Point',
+          lat: p.lat || p.latitude,
+          lng: p.lng || p.longitude
+        }))
+        .filter(p=>p.lat&&p.lng);
       const total = data.total_distance_km || 0;
       renderList(pts,total);
       renderMap(pts);
