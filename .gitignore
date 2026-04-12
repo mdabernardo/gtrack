@@ -2,7 +2,6 @@ __pycache__/
 *.pyc
 *.sqlite3
 .env
-/static/
 /media/
 /venv/
 *.log
@@ -19,7 +18,7 @@ node_modules/
 
 # Temporary data
 tmp_unverified.json
- 
- # Local virtual env and collected static
- .venv/
- staticfiles/
+
+# Local virtual env and collected static
+.venv/
+staticfiles/

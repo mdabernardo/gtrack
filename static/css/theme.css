@@ -1,0 +1,2 @@
+/* Minimal fallback theme.css so templates that reference /static/css/theme.css don't 404 */
+body { margin: 0; padding: 0; }

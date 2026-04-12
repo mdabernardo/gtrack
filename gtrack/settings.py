@@ -41,7 +41,7 @@ FIREBASE_CLIENT_CONFIG = {
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-d5y_z-fj30d=etzs8*a0&e5lu&4311-cn1-38lpy(ocqf4oq&b'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-d5y_z-fj30d=etzs8*a0&e5lu&4311-cn1-38lpy(ocqf4oq&b')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # Default to env var; fall back to True for local dev
@@ -85,6 +85,14 @@ CSRF_TRUSTED_ORIGINS = [
     'http://0.0.0.0:8000',
     'http://127.0.0.1:8001',
 ]
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'true').lower() in ('true', '1', 'yes')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 # Application definition
 INSTALLED_APPS = [

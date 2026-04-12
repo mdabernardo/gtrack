@@ -501,6 +501,15 @@
                 workflowPicked.textContent = label || 'Pick a report';
             }
 
+            function getCsrfToken() {
+                try {
+                    var m = document.cookie.match(/csrftoken=([^;]+)/);
+                    return m ? m[1] : '';
+                } catch (e) {
+                    return '';
+                }
+            }
+
             function loadRoutesForWorkflow() {
                 if (!workflowRouteSelect) return;
                 fetch('/api/routes/')
@@ -609,18 +618,25 @@
                     }
                     setWorkflowStatus('Sending notifications to mobile…', '');
                     var loc = selectedLocation || 'multiple locations';
-                    var url = '/api/approve-reroute/?route_id=' + encodeURIComponent(selectedRoute.id) +
-                        '&route_name=' + encodeURIComponent(selectedRoute.name || 'Main Route') +
-                        '&location_name=' + encodeURIComponent(loc) +
-                        '&report_id=' + encodeURIComponent(selectedReport && selectedReport.id ? selectedReport.id : '') +
-                        '&report_collection=' + encodeURIComponent(selectedReport && selectedReport.collection ? selectedReport.collection : '');
-                    if (workflowDate && safeStr(workflowDate.value)) {
-                        url += '&date=' + encodeURIComponent(safeStr(workflowDate.value));
-                    }
-                    if (workflowTruckFull && workflowTruckFull.checked) {
-                        url += '&handoff=1&full_collector_id=1';
-                    }
-                    fetch(url, { method: 'GET' })
+                    var payload = {
+                        route_id: safeStr(selectedRoute.id),
+                        route_name: safeStr(selectedRoute.name || 'Main Route'),
+                        location_name: safeStr(loc),
+                        report_id: safeStr(selectedReport && selectedReport.id ? selectedReport.id : ''),
+                        report_collection: safeStr(selectedReport && selectedReport.collection ? selectedReport.collection : ''),
+                        date: workflowDate && safeStr(workflowDate.value) ? safeStr(workflowDate.value) : '',
+                        handoff: (workflowTruckFull && workflowTruckFull.checked) ? '1' : '',
+                        full_collector_id: (workflowTruckFull && workflowTruckFull.checked) ? '1' : '',
+                    };
+                    fetch('/api/approve-reroute/', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        },
+                        body: JSON.stringify(payload),
+                    })
                         .then(r => r.ok ? r.json() : Promise.reject(new Error('approve')))
                         .then(data => {
                             var webCnt = data && data.web_notifications_created != null ? String(data.web_notifications_created) : '—';

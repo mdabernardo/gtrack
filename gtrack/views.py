@@ -786,12 +786,20 @@ def firebase_login(request):
     except Exception as e:
         return Response({'status': 'error', 'message': str(e)}, status=400)
 
+def _is_staff_user(user) -> bool:
+    try:
+        return bool(user and getattr(user, "is_authenticated", False) and (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)))
+    except Exception:
+        return False
+
 
 @api_view(['POST', 'GET'])
 def check_road_reports(request):
     """
     Checks for new road reports and sends notifications.
     """
+    if not _is_staff_user(getattr(request, "user", None)):
+        return Response({'status': 'forbidden'}, status=403)
     reports = fetch_road_reports(only_new=True)
     if not reports:
         return Response({'status': 'no_new_reports'})
@@ -911,6 +919,8 @@ def check_road_reports(request):
 
 @api_view(['POST', 'GET'])
 def approve_reroute(request):
+    if not _is_staff_user(getattr(request, "user", None)):
+        return Response({'status': 'forbidden'}, status=403)
     data = request.data if request.method == 'POST' else request.query_params
     route_id = data.get('route_id') or data.get('routeId')
     try:
@@ -1382,6 +1392,8 @@ def garbage_level_view(request):
 
 @login_required
 def road_map_view(request):
+    if not getattr(request.user, "is_staff", False):
+        return redirect('dashboard')
     app_id = settings.FIREBASE_CLIENT_CONFIG.get('projectId', 'g-trackapp')
     firebase_config_json = json.dumps(settings.FIREBASE_CLIENT_CONFIG)
     context = {
@@ -1967,14 +1979,38 @@ def generate_verification_notifications(request):
     try:
         if firestore and getattr(firebase_admin, "_apps", None):
             db = firestore.client()
-            docs = db.collection("notifications").where("kind", "==", "resident_verification").where("subtype", "==", "request").get()
-            for doc in docs:
-                data = doc.to_dict() if hasattr(doc, "to_dict") else {}
-                if not isinstance(data, dict):
-                    continue
-                st = data.get("verificationStatus") or data.get("status") or ((data.get("data") or {}).get("verificationStatus")) or ((data.get("data") or {}).get("status")) or "Pending"
-                if str(st).lower() == "pending":
-                    pending_count += 1
+            try:
+                for col_name in ("residents",):
+                    try:
+                        docs = db.collection(col_name).get()
+                    except Exception:
+                        docs = []
+                    if not docs:
+                        continue
+                    for doc in docs:
+                        data = doc.to_dict() if hasattr(doc, "to_dict") else {}
+                        if not isinstance(data, dict):
+                            continue
+                        st = data.get("verificationStatus") or data.get("status")
+                        if not st:
+                            if data.get("isVerified") is True or data.get("is_verified") is True:
+                                st = "Verified"
+                            else:
+                                st = "Pending"
+                        if str(st).lower() == "pending":
+                            pending_count += 1
+                    break
+            except Exception:
+                pending_count = 0
+            if pending_count == 0:
+                docs = db.collection("notifications").where("kind", "==", "resident_verification").where("subtype", "==", "request").get()
+                for doc in docs:
+                    data = doc.to_dict() if hasattr(doc, "to_dict") else {}
+                    if not isinstance(data, dict):
+                        continue
+                    st = data.get("verificationStatus") or data.get("status") or ((data.get("data") or {}).get("verificationStatus")) or ((data.get("data") or {}).get("status")) or "Pending"
+                    if str(st).lower() == "pending":
+                        pending_count += 1
         else:
             pending_count = Resident.objects.filter(is_verified=False).count()
     except Exception:
@@ -2083,6 +2119,63 @@ def resident_verification_requests(request):
 
     try:
         db = firestore.client()
+        resident_docs = []
+        resident_collection = None
+        for col_name in ("residents",):
+            try:
+                docs = db.collection(col_name).get()
+            except Exception:
+                docs = []
+            if docs:
+                resident_docs = docs
+                resident_collection = col_name
+                break
+
+        if resident_docs:
+            items = []
+            for snap in resident_docs:
+                data = snap.to_dict() or {}
+                if not isinstance(data, dict):
+                    continue
+
+                status_value = data.get("verificationStatus") or data.get("status")
+                if not status_value:
+                    if data.get("isVerified") is True or data.get("is_verified") is True:
+                        status_value = "Verified"
+                    else:
+                        status_value = "Pending"
+
+                if status_filter.lower() != "all" and str(status_value).lower() != status_filter.lower():
+                    continue
+
+                ts = data.get("timestamp") or data.get("createdAt") or data.get("created_at")
+                try:
+                    created_at = ts.isoformat() if hasattr(ts, "isoformat") else None
+                except Exception:
+                    created_at = None
+
+                recipient_uid = data.get("uid") or data.get("userId") or data.get("recipientUid") or snap.id
+
+                items.append({
+                    "id": snap.id,
+                    "requestId": snap.id,
+                    "resultNotificationId": data.get("resultNotificationId") or data.get("verificationResultNotificationId") or data.get("verification_result_notification_id"),
+                    "recipientUid": str(recipient_uid or ""),
+                    "status": status_value,
+                    "verificationStatus": status_value,
+                    "rejectionReason": data.get("rejectionReason") or data.get("rejectReason") or data.get("reason"),
+                    "resident": dict(data),
+                    "createdAt": created_at,
+                    "sourceCollection": resident_collection,
+                })
+
+            def _sort_key(x):
+                v = x.get("createdAt") or ""
+                return v
+
+            items.sort(key=_sort_key, reverse=True)
+            return Response({'status': 'ok', 'count': len(items), 'items': items})
+
         results_by_id = {}
 
         try:
@@ -2230,6 +2323,76 @@ def resident_verification_verify(request, doc_id: str):
 
     try:
         db = firestore.client()
+        resident_ref = None
+        resident_snap = None
+        resident_collection = None
+        for col_name in ("residents",):
+            try:
+                ref = db.collection(col_name).document(str(doc_id))
+                snap = ref.get()
+            except Exception:
+                ref = None
+                snap = None
+            if snap is not None and getattr(snap, "exists", False):
+                resident_ref = ref
+                resident_snap = snap
+                resident_collection = col_name
+                break
+
+        if resident_ref is not None and resident_snap is not None and resident_snap.exists:
+            resident_data = resident_snap.to_dict() or {}
+            if not isinstance(resident_data, dict):
+                resident_data = {}
+
+            recipient_uid = resident_data.get("uid") or resident_data.get("userId") or str(doc_id)
+            resident_ref.set(
+                {
+                    "verificationStatus": "Verified",
+                    "status": "Verified",
+                    "isVerified": True,
+                    "is_verified": True,
+                    "verifiedAt": firestore.SERVER_TIMESTAMP,
+                    "rejectionReason": firestore.DELETE_FIELD,
+                    "decidedAt": firestore.SERVER_TIMESTAMP,
+                    "decidedBy": (request.user.email or request.user.username or ""),
+                },
+                merge=True,
+            )
+
+            title = "Resident Verification"
+            body = "Your account has been verified."
+            result_notification_id = f"resident_verification_result_{doc_id}"
+            create_firestore_notification(
+                title=title,
+                body=body,
+                target="resident",
+                disruption_type="resident_verification_result",
+                doc_id=result_notification_id,
+                extra_data={
+                    "kind": "resident_verification",
+                    "subtype": "result",
+                    "requestId": str(doc_id),
+                    "parentRequestId": str(doc_id),
+                    "recipientUid": str(recipient_uid or ""),
+                    "verificationId": str(doc_id),
+                    "verificationStatus": "Verified",
+                    "residentCollection": resident_collection,
+                },
+            )
+            try:
+                resident_ref.set({"resultNotificationId": result_notification_id, "verificationResultNotificationId": result_notification_id}, merge=True)
+            except Exception:
+                pass
+
+            try:
+                token = resident_data.get("fcmToken") or resident_data.get("fcm_token")
+                if token and firebase_manager:
+                    firebase_manager.send_push_notification(token, title, body, data={"requestId": str(doc_id), "verificationStatus": "Verified"})
+            except Exception:
+                pass
+
+            return Response({'status': 'ok'})
+
         notif_ref = db.collection("notifications").document(str(doc_id))
         snap = notif_ref.get()
         data = snap.to_dict() or {} if snap.exists else {}
@@ -2310,6 +2473,80 @@ def resident_verification_reject(request, doc_id: str):
 
     try:
         db = firestore.client()
+        resident_ref = None
+        resident_snap = None
+        resident_collection = None
+        for col_name in ("residents",):
+            try:
+                ref = db.collection(col_name).document(str(doc_id))
+                snap = ref.get()
+            except Exception:
+                ref = None
+                snap = None
+            if snap is not None and getattr(snap, "exists", False):
+                resident_ref = ref
+                resident_snap = snap
+                resident_collection = col_name
+                break
+
+        if resident_ref is not None and resident_snap is not None and resident_snap.exists:
+            resident_data = resident_snap.to_dict() or {}
+            if not isinstance(resident_data, dict):
+                resident_data = {}
+
+            recipient_uid = resident_data.get("uid") or resident_data.get("userId") or str(doc_id)
+
+            update = {
+                "verificationStatus": "Rejected",
+                "status": "Rejected",
+                "isVerified": False,
+                "is_verified": False,
+                "rejectedAt": firestore.SERVER_TIMESTAMP,
+                "decidedAt": firestore.SERVER_TIMESTAMP,
+                "decidedBy": (request.user.email or request.user.username or ""),
+            }
+            if reason:
+                update["rejectionReason"] = str(reason)
+            resident_ref.set(update, merge=True)
+
+            title = "Resident Verification"
+            body = "Your account verification was rejected."
+            if reason:
+                body = f"Your account verification was rejected: {reason}"
+
+            result_notification_id = f"resident_verification_result_{doc_id}"
+            create_firestore_notification(
+                title=title,
+                body=body,
+                target="resident",
+                disruption_type="resident_verification_result",
+                doc_id=result_notification_id,
+                extra_data={
+                    "kind": "resident_verification",
+                    "subtype": "result",
+                    "requestId": str(doc_id),
+                    "parentRequestId": str(doc_id),
+                    "recipientUid": str(recipient_uid or ""),
+                    "verificationId": str(doc_id),
+                    "verificationStatus": "Rejected",
+                    "rejectionReason": str(reason) if reason else None,
+                    "residentCollection": resident_collection,
+                },
+            )
+            try:
+                resident_ref.set({"resultNotificationId": result_notification_id, "verificationResultNotificationId": result_notification_id}, merge=True)
+            except Exception:
+                pass
+
+            try:
+                token = resident_data.get("fcmToken") or resident_data.get("fcm_token")
+                if token and firebase_manager:
+                    firebase_manager.send_push_notification(token, title, body, data={"requestId": str(doc_id), "verificationStatus": "Rejected", "rejectionReason": str(reason) if reason else ""})
+            except Exception:
+                pass
+
+            return Response({'status': 'ok'})
+
         notif_ref = db.collection("notifications").document(str(doc_id))
         snap = notif_ref.get()
         data = snap.to_dict() or {} if snap.exists else {}
