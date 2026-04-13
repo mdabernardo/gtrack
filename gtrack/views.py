@@ -1649,6 +1649,7 @@ def driver_verification_view(request):
 
     if request.method == 'POST':
         full_name = request.POST.get('full_name', '').strip()
+        username = request.POST.get('username', '').strip()
         address = request.POST.get('address', '').strip()
         contact_number = request.POST.get('contact_number', '').strip()
         age = request.POST.get('age', '').strip()
@@ -1657,7 +1658,7 @@ def driver_verification_view(request):
         password = request.POST.get('password', '').strip()
 
         # Basic validation
-        if not (full_name and address and contact_number and age and sex and gmail_email and password):
+        if not (full_name and username and address and contact_number and age and sex and gmail_email and password):
             messages.error(request, 'All fields are required.')
             return render(request, 'driver_verification.html', {})
 
@@ -1738,6 +1739,7 @@ def driver_verification_view(request):
                     db = firestore.client()
                     db.collection('collectors').document(uid).set({
                         'uid': uid,
+                        'username': username,
                         'fullName': full_name,
                         'address': address,
                         'contactNumber': contact_number,
