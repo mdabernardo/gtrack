@@ -14,7 +14,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--route_name", type=str, default="Main Route")
         parser.add_argument("--start", type=str, default="")
-        parser.add_argument("--end", type=str, default="2027-01-31")
+        parser.add_argument("--end", type=str, default="")
+        parser.add_argument("--days", type=int, default=30)
         parser.add_argument("--only_collector_schedules", action="store_true")
         parser.add_argument("--only_dropoff_schedules", action="store_true")
         parser.add_argument("--catmon6", action="store_true")
@@ -60,12 +61,6 @@ class Command(BaseCommand):
             return
 
         start_str = str(opts.get("start") or "").strip()
-        end_str = str(opts.get("end") or "2027-01-31").strip()
-        try:
-            end_day = datetime.strptime(end_str, "%Y-%m-%d").date()
-        except Exception:
-            end_day = date(2027, 1, 31)
-
         if start_str:
             try:
                 start_day = datetime.strptime(start_str, "%Y-%m-%d").date()
@@ -73,6 +68,15 @@ class Command(BaseCommand):
                 start_day = timezone.localdate()
         else:
             start_day = timezone.localdate()
+
+        end_str = str(opts.get("end") or "").strip()
+        if end_str:
+            try:
+                end_day = datetime.strptime(end_str, "%Y-%m-%d").date()
+            except Exception:
+                end_day = start_day + timedelta(days=int(opts.get("days") or 30))
+        else:
+            end_day = start_day + timedelta(days=int(opts.get("days") or 30))
 
         if end_day < start_day:
             self.stdout.write(self.style.WARNING("End date is before start date."))

@@ -47,6 +47,7 @@ from .ai_predictor import GarbageRoutePredictor
 from .firebase_sync import (
     sync_prediction_to_firestore, 
     sync_scheduling_assistance_to_firestore,
+    sync_collector_schedule_if_missing,
     fetch_scheduling_assistance_items,
     fetch_road_reports,
     mark_road_report_processed,
@@ -1499,6 +1500,50 @@ def schedules_view(request):
                                     confidence_score=confidence,
                                     factors=factors,
                                     etas=etas,
+                                )
+                            except Exception:
+                                pass
+                cache.set(last_key, today.isoformat(), 60 * 60 * 24)
+    except Exception:
+        pass
+    try:
+        allow_cs = os.getenv('AUTO_REFRESH_COLLECTOR_SCHEDULES', 'true').lower() in ('1', 'true', 'yes')
+        if allow_cs and firestore:
+            today = datetime.today().date()
+            last_key = 'collector_sched_last_refresh'
+            last_val = cache.get(last_key)
+            if last_val != today.isoformat():
+                future_days = int(os.getenv('AUTO_REFRESH_COLLECTOR_DAYS', '30'))
+                for route in Route.objects.all():
+                    points = RoutePoint.objects.filter(route=route).order_by('order').select_related('location')
+                    base_stops = []
+                    start_minutes = 6 * 60
+                    for idx, p in enumerate(points):
+                        if not getattr(p, 'location', None):
+                            continue
+                        nm = (p.location.name or '').strip()
+                        if not nm:
+                            continue
+                        tmin = start_minutes + (idx * 50)
+                        hh = int(tmin // 60) % 24
+                        mm = int(tmin % 60)
+                        base_stops.append({
+                            'name': nm,
+                            'latitude': float(p.location.latitude or 0.0),
+                            'longitude': float(p.location.longitude or 0.0),
+                            'garbageLevel': 0,
+                            'plannedTime': datetime(2000, 1, 1, hh, mm).strftime("%I:%M %p"),
+                        })
+                    for i in range(max(0, future_days) + 1):
+                        target_date = today + timedelta(days=i)
+                        for collector_id in ('1', '2'):
+                            try:
+                                sync_collector_schedule_if_missing(
+                                    route_id=route.id,
+                                    route_name=route.name,
+                                    schedule_date=target_date,
+                                    collector_id=collector_id,
+                                    pickup_locations=base_stops,
                                 )
                             except Exception:
                                 pass

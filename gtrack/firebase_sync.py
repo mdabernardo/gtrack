@@ -317,6 +317,67 @@ def sync_scheduling_assistance_to_firestore(
         return False
 
 
+def sync_collector_schedule_if_missing(
+    route_id: int,
+    route_name: str,
+    schedule_date: date_type,
+    collector_id: str,
+    pickup_locations: Optional[Sequence[Dict[str, Any]]] = None,
+    status: str = "scheduled",
+    task: str = "Garbage Collection",
+    start_time: str = "06:00 AM",
+    end_time: str = "10:00 PM",
+    area: str = "",
+) -> bool:
+    db = _get_firestore_client()
+    if db is None:
+        return False
+
+    try:
+        collector_id = str(collector_id).strip()
+        if collector_id not in ("1", "2"):
+            return False
+
+        ymd = schedule_date.strftime("%Y%m%d")
+        iso = schedule_date.strftime("%Y-%m-%d")
+        day_name = schedule_date.strftime("%A")
+        day_index = int(schedule_date.weekday())
+        doc_id = f"{int(route_id)}_{ymd}_{collector_id}"
+
+        doc_ref = db.collection("collector_schedules").document(doc_id)
+        try:
+            snap = doc_ref.get()
+            if getattr(snap, "exists", False):
+                return True
+        except Exception:
+            pass
+
+        payload: Dict[str, Any] = {
+            "date": iso,
+            "dayName": day_name,
+            "dayIndex": day_index,
+            "routeId": str(int(route_id)),
+            "routeName": str(route_name or "").strip() or str(int(route_id)),
+            "collectorId": collector_id,
+            "startTime": str(start_time),
+            "endTime": str(end_time),
+            "status": str(status or "scheduled"),
+            "task": str(task or "Garbage Collection"),
+            "pickupPlan": {
+                "area": str(area or ""),
+                "locations": list(pickup_locations) if pickup_locations else [],
+                "dominantLocation": "Dumpsite",
+            },
+            "updatedAt": firestore.SERVER_TIMESTAMP if firestore else None,
+            "generated": True,
+        }
+
+        doc_ref.set(payload, merge=True)
+        return True
+    except Exception:
+        return False
+
+
 def fetch_garbagelevel_items(for_date: Optional[date_type] = None) -> list:
     """Fetch garbage level items from Firestore collection 'garbagelevel'.
     Returns list of dicts: {id, location, garbageLevel, latitude, longitude, ...}

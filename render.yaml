@@ -29,3 +29,27 @@ services:
         value: ""
       - key: GOOGLE_CLIENT_SECRET
         value: ""
+
+  - type: cron
+    name: gtrack-seed-collector-schedules
+    env: python
+    schedule: "15 0 * * *"
+    buildCommand: |
+      pip install --upgrade pip setuptools wheel
+      pip install -r requirements.txt
+    startCommand: |
+      python manage.py seed_resident_year_dataset --only_collector_schedules --days 30
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: gtrack.settings
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        fromService:
+          name: gtrack
+          type: web
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gtrack-db
+          property: connectionString
