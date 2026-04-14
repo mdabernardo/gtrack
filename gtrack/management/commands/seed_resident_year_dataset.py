@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 import random
 
 from django.core.management.base import BaseCommand
+from django.core.management.base import CommandError
 from django.utils import timezone
 
 from gtrack.firebase_sync import _get_firestore_client
@@ -16,6 +17,7 @@ class Command(BaseCommand):
         parser.add_argument("--start", type=str, default="")
         parser.add_argument("--end", type=str, default="")
         parser.add_argument("--days", type=int, default=30)
+        parser.add_argument("--past_days", type=int, default=0)
         parser.add_argument("--only_collector_schedules", action="store_true")
         parser.add_argument("--only_dropoff_schedules", action="store_true")
         parser.add_argument("--catmon6", action="store_true")
@@ -23,8 +25,10 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         db = _get_firestore_client()
         if db is None:
-            self.stdout.write(self.style.WARNING("Firestore client not available."))
-            return
+            raise CommandError(
+                "Firestore client not available. Set FIREBASE_ADMIN_JSON (recommended) "
+                "or FIREBASE_CREDENTIALS_PATH / GOOGLE_APPLICATION_CREDENTIALS to a service account key."
+            )
 
         route_name = str(opts.get("route_name") or "Main Route").strip()
         route = Route.objects.filter(name__iexact=route_name).first() or Route.objects.first()
@@ -67,7 +71,9 @@ class Command(BaseCommand):
             except Exception:
                 start_day = timezone.localdate()
         else:
-            start_day = timezone.localdate()
+            past_days = int(opts.get("past_days") or 0)
+            past_days = max(0, past_days)
+            start_day = timezone.localdate() - timedelta(days=past_days)
 
         end_str = str(opts.get("end") or "").strip()
         if end_str:
