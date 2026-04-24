@@ -67,6 +67,7 @@
                             <div class="panel-title">Collection Window</div>
                             <div class="time-text" id="predWindowText">Select a date.</div>
                             <div class="muted" id="predMetaText"></div>
+                            <ul class="eta-list" id="etaList" style="margin-top: 15px;"></ul>
                         </div>
                         <div class="panel">
                             <div class="panel-title">Resident Drop-off Schedule (6 Streets)</div>
@@ -161,6 +162,7 @@
             var todayBtn = document.getElementById('todayBtn');
             var predWindowText = document.getElementById('predWindowText');
             var predMetaText = document.getElementById('predMetaText');
+            var etaList = document.getElementById('etaList');
             var dropoffList = document.getElementById('dropoffList');
             var dropoffByDate = {};
             var selectedIso = null;
@@ -182,6 +184,7 @@
             function setDetailsEmpty() {
                 if (predWindowText) predWindowText.textContent = 'Select a date.';
                 if (predMetaText) predMetaText.textContent = '';
+                if (etaList) etaList.innerHTML = '';
                 if (dropoffList) dropoffList.innerHTML = '<li class="eta-item"><span class="muted">Select a date.</span><span class="muted">—</span></li>';
             }
 
@@ -343,7 +346,36 @@
                 if (predWindowText) {
                     predWindowText.textContent = '06:00 AM - 10:00 PM';
                 }
-                if (predMetaText) predMetaText.textContent = 'Route: ' + safeStr((doc && (doc.route_name || doc.routeName)) || 'Main Route');
+                if (predMetaText) {
+                    var rname = safeStr((doc && (doc.route_name || doc.routeName)) || 'Main Route');
+                    var conf = (doc && doc.confidence) ? ' • AI Confidence: ' + Math.round(Number(doc.confidence) * 100) + '%' : '';
+                    predMetaText.textContent = 'Route: ' + rname + conf;
+                }
+                if (etaList) {
+                    etaList.innerHTML = '';
+                    var etas = (doc && doc.etas && Array.isArray(doc.etas)) ? doc.etas : [];
+                    if (etas.length > 0) {
+                        etas.forEach(function(e) {
+                            var li = document.createElement('li');
+                            li.className = 'eta-item';
+                            var left = document.createElement('span');
+                            left.textContent = safeStr(e.location_name || e.locationName || 'Point');
+                            var right = document.createElement('span');
+                            right.className = 'eta-time';
+                            var times = (e && e.times && Array.isArray(e.times)) ? e.times : [];
+                            if (times.length) {
+                                right.textContent = 'ETA: ' + times.map(function (t) { return safeStr(t); }).filter(function (t) { return !!t; }).join(', ');
+                            } else {
+                                right.textContent = 'ETA: ' + safeStr(e.eta || '—');
+                            }
+                            li.appendChild(left);
+                            li.appendChild(right);
+                            etaList.appendChild(li);
+                        });
+                    } else {
+                        etaList.innerHTML = '<li class="eta-item"><span class="muted">No estimated times available.</span><span class="muted">—</span></li>';
+                    }
+                }
 
                 renderResidentList(dropItems);
             }

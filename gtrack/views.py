@@ -1075,18 +1075,6 @@ def approve_reroute(request):
                     full_stops = stops[:split_idx]
                     remaining_stops = stops[split_idx:]
                     if remaining_stops:
-                        start_minutes = 6 * 60
-                        for i, st in enumerate(full_stops):
-                            tmin = start_minutes + (i * 50)
-                            hh = int(tmin // 60) % 24
-                            mm = int(tmin % 60)
-                            st["plannedTime"] = datetime(2000, 1, 1, hh, mm).strftime("%I:%M %p")
-                        for i, st in enumerate(remaining_stops):
-                            tmin = start_minutes + (i * 50)
-                            hh = int(tmin // 60) % 24
-                            mm = int(tmin % 60)
-                            st["plannedTime"] = datetime(2000, 1, 1, hh, mm).strftime("%I:%M %p")
-
                         handoff_id = f"handoff_{reroute_id}"
                         db.collection("collector_schedules").document(doc_full_id).set({
                             "date": reroute_date.strftime("%Y-%m-%d"),
@@ -1101,6 +1089,9 @@ def approve_reroute(request):
                             "route_name": route_name,
                             "collector_id": str(full_collector_id),
                             "collectorIdInt": int(full_collector_id),
+                            "startTime": "06:00 AM",
+                            "endTime": "10:00 PM",
+                            "task": "Garbage Collection",
                             "status": "full",
                             "capacity_percent": 100,
                             "recommended_action": "go_to_dropoff_then_delegate",
@@ -1133,6 +1124,9 @@ def approve_reroute(request):
                             "route_name": route_name,
                             "collector_id": str(other_collector_id),
                             "collectorIdInt": int(other_collector_id),
+                            "startTime": "06:00 AM",
+                            "endTime": "10:00 PM",
+                            "task": "Garbage Collection",
                             "status": "scheduled",
                             "pickupPlan": {
                                 "dominantLocation": "Dumpsite",
@@ -1484,17 +1478,17 @@ def schedules_view(request):
                         target_date = today + timedelta(days=i)
                         pred = ai_predictor.predict_route_schedule(route.id, target_date)
                         if pred:
-                            start_str = pred['predicted_start_time'].strftime('%H:%M')
-                            end_str = pred['predicted_end_time'].strftime('%H:%M')
+                            start_tm = pred['predicted_start_time']
+                            end_tm = pred['predicted_end_time']
+                            start_str = start_tm.strftime("%I:%M %p")
+                            end_str = end_tm.strftime("%I:%M %p")
                             confidence = float(pred.get('confidence_score', 0.0))
                             factors = pred.get('factors', {})
                             etas = []
                             cum = 0
-                            start_tm = pred['predicted_start_time']
                             for p in points:
-                                eta_hour = (start_tm.hour * 60 + start_tm.minute + cum) // 60
-                                eta_min = (start_tm.hour * 60 + start_tm.minute + cum) % 60
-                                eta_str = f"{int(eta_hour)%24:02d}:{int(eta_min):02d}"
+                                eta_dt = start_tm + timedelta(minutes=int(cum))
+                                eta_str = eta_dt.strftime("%I:%M %p")
                                 etas.append({
                                     'point_id': p.id,
                                     'location_name': p.location.name,

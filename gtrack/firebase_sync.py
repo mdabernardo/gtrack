@@ -371,7 +371,10 @@ def sync_collector_schedule_if_missing(
             "task": str(task or "Garbage Collection"),
             "pickupPlan": {
                 "area": str(area or ""),
-                "locations": list(pickup_locations) if pickup_locations else [],
+                "locations": [
+                    (lambda x: (x.pop("plannedTime", None), x.pop("time_am", None), x.pop("time_pm", None), x.pop("times", None), x)[-1])(dict(loc))
+                    for loc in (list(pickup_locations) if pickup_locations else [])
+                ],
                 "dominantLocation": "Dumpsite",
             },
             "updatedAt": firestore.SERVER_TIMESTAMP if firestore else None,

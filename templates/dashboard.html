@@ -908,10 +908,19 @@
                     if (MAIN_ROUTE_ID && rid && rid !== String(MAIN_ROUTE_ID)) return;
                     const cid = String(d.collectorId || d.collector_id || '').trim();
                     if (cid !== '1' && cid !== '2') return;
-                    rows.push({ name: `Collector ${cid}`, value: '06:00 AM - 09:00 PM' });
+                    rows.push({ name: `Collector ${cid}`, value: '06:00 AM - 10:00 PM' });
                 });
                 rows.sort((a,b)=>a.name.localeCompare(b.name));
-                renderMiniList('dashCollectorSched', 'Today Collect', todayIso, rows);
+                // Remove duplicates if any
+                const uniqueRows = [];
+                const seen = new Set();
+                rows.forEach(r => {
+                    if (!seen.has(r.name)) {
+                        seen.add(r.name);
+                        uniqueRows.push(r);
+                    }
+                });
+                renderMiniList('dashCollectorSched', 'Today Collect', todayIso, uniqueRows);
             }, () => renderMiniList('dashCollectorSched', 'Today Collect', todayIso, []));
         })();
 
