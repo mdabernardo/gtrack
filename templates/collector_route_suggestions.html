@@ -42,7 +42,9 @@
                     <option value="">Select route…</option>
                 </select>
                 <button type="button" class="btn" id="refreshBtn">Refresh</button>
+                <button type="button" class="btn" id="myLocBtn">My Location</button>
                 <div class="muted" id="metaText">—</div>
+                <div class="muted" id="locStatus"></div>
             </div>
             <div class="week-row" id="weekRow"></div>
             <div class="details">
@@ -111,6 +113,72 @@
             var map = null;
             var poly = null;
             var markers = [];
+            var userMarker = null;
+            var pickedMarker = null;
+
+            function setLocStatus(msg) {
+                var el = document.getElementById('locStatus');
+                if (!el) return;
+                el.textContent = msg || '';
+            }
+
+            function onRequestPermissionsResult(granted) {
+                if (granted) setLocStatus('Location permission granted');
+                else setLocStatus('Location permission denied');
+            }
+
+            function getDeviceLocation() {
+                if (!navigator.geolocation) {
+                    setLocStatus('Geolocation not supported');
+                    return;
+                }
+                setLocStatus('Getting location…');
+                navigator.geolocation.getCurrentPosition(function (pos) {
+                    var lat = Number(pos && pos.coords ? pos.coords.latitude : null);
+                    var lng = Number(pos && pos.coords ? pos.coords.longitude : null);
+                    if (!isFinite(lat) || !isFinite(lng)) {
+                        setLocStatus('Location unavailable');
+                        onRequestPermissionsResult(false);
+                        return;
+                    }
+                    var mp = ensureMap();
+                    var ll = { lat: lat, lng: lng };
+                    if (!userMarker) {
+                        userMarker = new google.maps.Marker({ map: mp, position: ll, title: 'You are here' });
+                    } else {
+                        userMarker.setPosition(ll);
+                    }
+                    mp.setCenter(ll);
+                    mp.setZoom(16);
+                    setLocStatus('Location updated');
+                    onRequestPermissionsResult(true);
+                }, function (err) {
+                    if (err && err.code === 1) {
+                        setLocStatus('Permission denied');
+                        onRequestPermissionsResult(false);
+                        return;
+                    }
+                    setLocStatus('Unable to get location');
+                    onRequestPermissionsResult(false);
+                }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+            }
+
+            function onMapReady(googleMap) {
+                try {
+                    googleMap.addListener('click', function (e) {
+                        var lat = Number(e && e.latLng ? e.latLng.lat() : null);
+                        var lng = Number(e && e.latLng ? e.latLng.lng() : null);
+                        if (!isFinite(lat) || !isFinite(lng)) return;
+                        var ll = { lat: lat, lng: lng };
+                        if (!pickedMarker) {
+                            pickedMarker = new google.maps.Marker({ map: googleMap, position: ll, title: 'Selected point' });
+                        } else {
+                            pickedMarker.setPosition(ll);
+                        }
+                    });
+                } catch (e) {}
+                try { getDeviceLocation(); } catch (e) {}
+            }
 
             function clearMap() {
                 if (poly) { try { poly.setMap(null); } catch (e) {} }
@@ -138,6 +206,7 @@
                     zoom: 14,
                     mapTypeControl: true
                 });
+                onMapReady(map);
                 return map;
             }
             function renderSuggestion(points) {
@@ -265,10 +334,11 @@
 
             if (refreshBtn) refreshBtn.addEventListener('click', refresh);
             if (routeSelect) routeSelect.addEventListener('change', refresh);
+            var myLocBtn = document.getElementById('myLocBtn');
+            if (myLocBtn) myLocBtn.addEventListener('click', function () { getDeviceLocation(); });
             renderWeek();
             loadRoutes();
         })();
     </script>
 </body>
 </html>
-

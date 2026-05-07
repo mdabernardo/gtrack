@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.generic import RedirectView
 from gtrack.views import profile_view, signup_view
 
 # Assuming your views are in gtrack/views.py
@@ -41,6 +42,7 @@ urlpatterns = [
     # App pages
     path('dashboard/', views.dashboard, name='dashboard'),
     path('track-trucks/', views.track_trucks_view, name='track_trucks'),
+    path('track_trucks/', RedirectView.as_view(pattern_name='track_trucks', permanent=False)),
     path('help/', views.help_view, name='help'),
     path('settings/', views.settings_view, name='settings'),
     path('garbage-level/', views.garbage_level_view, name='garbage_level'),

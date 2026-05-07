@@ -397,11 +397,12 @@
             const el = document.getElementById('highest-analysis');
             if (!el) return;
             const routeRows = computeRouteOverall(garbageData);
+            const sortedRouteRows = routeRows.slice().sort((a, b) => (b.percent - a.percent) || String(a.name || '').localeCompare(String(b.name || '')));
             const nonEmpty = routeRows.filter((r) => r.percent > 0);
-            const best = nonEmpty.slice().sort((a, b) => b.percent - a.percent)[0] || routeRows[0] || null;
+            const best = nonEmpty.slice().sort((a, b) => (b.percent - a.percent) || String(a.name || '').localeCompare(String(b.name || '')))[0] || sortedRouteRows[0] || null;
 
-            const barItems = routeRows.map((r) => {
-                const color = r.percent >= 67 ? '#ff6384' : (r.percent >= 34 ? '#ffcd56' : '#4bc0c0');
+            const barItems = sortedRouteRows.map((r) => {
+                const color = r.percent >= 67 ? '#ff3838' : (r.percent >= 34 ? '#ffe500' : '#32a000');
                 return `
                     <div class="py-2">
                         <div class="flex items-end justify-between gap-4">

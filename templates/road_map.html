@@ -66,7 +66,7 @@
         <div class="header">
             <div>
                 <h1 class="title">Road Map</h1>
-                <p class="subtitle">Incidents (road reports) and reroute artifacts from the database.</p>
+                <p class="subtitle">View road incident reports and the suggested reroutes generated from them.</p>
             </div>
             <div class="actions">
                 <div class="workflow-controls">
@@ -77,9 +77,15 @@
                         <option value="">Select location…</option>
                     </select>
                     <input type="date" id="workflowDate" />
-                    <label><input type="checkbox" id="workflowTruckFull" />Truck 1 full</label>
-                    <button class="btn" type="button" id="previewBtn">Run AI / Refresh</button>
-                    <button class="btn secondary" type="button" id="approveBtn" disabled>Approve + Notify Mobile</button>
+                    <label>Truck full
+                        <select id="workflowTruckFull">
+                            <option value="">No</option>
+                            <option value="1">Truck 1</option>
+                            <option value="2">Truck 2</option>
+                        </select>
+                    </label>
+                    <button class="btn" type="button" id="previewBtn">Generate Reroute</button>
+                    <button class="btn secondary" type="button" id="approveBtn" disabled>Approve and Notify Mobile</button>
                 </div>
             </div>
         </div>
@@ -87,12 +93,12 @@
         <div class="card workflow">
             <div class="card-head">
                 <h2 class="card-title">AI Reroute Process</h2>
-                <span class="badge" id="workflowPicked">Pick a report</span>
+                <span class="badge" id="workflowPicked">Select a report</span>
             </div>
             <div class="card-body">
                 <div class="status" id="workflowStatus" style="display:none;"></div>
                 <div class="ai-box" id="aiTraceBox">
-                    <div class="ai-title">AI Decision Trace</div>
+                    <div class="ai-title">How the AI Decided</div>
                     <pre id="aiTraceText">—</pre>
                 </div>
             </div>
@@ -127,8 +133,8 @@
                         <span class="badge" id="rerouteCount">0</span>
                     </div>
                     <div class="tabs" id="rerouteTabs">
-                        <button class="tab active" type="button" data-tab="reroutr">reroutr</button>
-                        <button class="tab" type="button" data-tab="route_suggestion">route_suggestion</button>
+                        <button class="tab active" type="button" data-tab="reroutr">Reroute Records</button>
+                        <button class="tab" type="button" data-tab="route_suggestion">Suggested Route</button>
                     </div>
                 </div>
                 <div class="card-body">
@@ -206,17 +212,17 @@
                     return;
                 }
                 rerouteDetails.style.display = 'block';
-                rerouteDetails.textContent = 'Preview suggested order: ' + names.join(' → ');
+                rerouteDetails.textContent = 'Suggested stop order: ' + names.join(' → ');
             }
 
             function runPreview() {
                 if (!selectedRoute.id) {
-                    setWorkflowStatus('No route selected.', 'err');
+                    setWorkflowStatus('Please select a route.', 'err');
                     return;
                 }
                 previewReady = false;
                 if (approveBtn) approveBtn.disabled = true;
-                setWorkflowStatus('Generating reroute preview…', '');
+                setWorkflowStatus('Generating a reroute suggestion…', '');
                 if (aiTraceBox) aiTraceBox.style.display = 'block';
                 if (aiTraceText) aiTraceText.textContent = 'Loading…';
                 if (previewAbort) {
@@ -246,7 +252,7 @@
                         if (seq !== previewSeq) return;
                         previewReady = true;
                         if (approveBtn) approveBtn.disabled = false;
-                        setWorkflowStatus('AI computed. If okay, approve to notify mobile.', 'ok');
+                        setWorkflowStatus('Reroute ready. Approve to send a mobile alert.', 'ok');
                         renderTrace(data && data.trace ? data.trace : null);
                         renderPreviewOrder(data || null);
                         activeRerouteTab = 'reroutr';
@@ -273,15 +279,18 @@
                     return;
                 }
                 reportsList.innerHTML = filtered.map(function (r) {
-                    var locRaw = safeStr(r.location || '').trim();
+                    var locRaw = safeStr(r.locationName || r.location_name || r.location || '').trim();
                     var loc = esc(locRaw || 'Unknown Location');
                     var descRaw = safeStr(r.description || '').trim();
                     var desc = esc(descRaw || '—');
+                    var driverRaw = safeStr(r.collectorName || r.driverName || r.driver || r.collector || '').trim();
+                    var driver = driverRaw ? ('Driver: ' + driverRaw) : '';
                     var st = statusBadge(r.status);
                     return (
                         '<li class="item" data-location="' + esc(locRaw || 'Unknown Location') + '" data-desc="' + esc(descRaw) + '" data-report-id="' + esc(r.id || '') + '" data-report-collection="' + esc(r.__collection__ || '') + '">' +
                         '<div class="left">' +
                         '<div class="name">' + loc + '</div>' +
+                        (driver ? ('<div class="meta">' + esc(driver) + '</div>') : '') +
                         '<div class="desc">' + desc + '</div>' +
                         '</div>' +
                         '<div class="right">' +
@@ -297,7 +306,7 @@
                 if (!rerouteList) return;
                 if (rerouteCount) rerouteCount.textContent = String(reroutes.length || 0);
                 if (!reroutes.length) {
-                    rerouteList.innerHTML = '<li class="item"><span class="muted">No reroute artifacts.</span><span class="muted">—</span></li>';
+                    rerouteList.innerHTML = '<li class="item"><span class="muted">No reroute records.</span><span class="muted">—</span></li>';
                     if (rerouteDetails) rerouteDetails.style.display = 'none';
                     return;
                 }
@@ -385,7 +394,9 @@
                         var at = safeStr(a.timestamp || a.created_at || a.createdAt || '');
                         var bt = safeStr(b.timestamp || b.created_at || b.createdAt || '');
                         if (bt !== at) return bt.localeCompare(at);
-                        return safeStr(a.location).localeCompare(safeStr(b.location));
+                        var al = safeStr(a.locationName || a.location_name || a.location || '');
+                        var bl = safeStr(b.locationName || b.location_name || b.location || '');
+                        return al.localeCompare(bl);
                     });
                     renderReports();
                 }
@@ -397,8 +408,30 @@
             function listenReroutes() {
                 if (unsubReroute) { try { unsubReroute(); } catch (e) {} unsubReroute = null; }
                 reroutes = [];
-                var col = activeRerouteTab === 'route_suggestion' ? 'route_suggestion' : 'reroutr';
-                unsubReroute = db.collection(col).onSnapshot(function (snap) {
+                if (activeRerouteTab === 'route_suggestion') {
+                    unsubReroute = db.collection('route_suggestion').onSnapshot(function (snap) {
+                        var items = [];
+                        snap.forEach(function (doc) {
+                            var d = doc.data() || {};
+                            d.id = doc.id;
+                            items.push(d);
+                        });
+                        items.sort(function (a, b) {
+                            var ad = safeStr(a.date || '');
+                            var bd = safeStr(b.date || '');
+                            if (bd !== ad) return bd.localeCompare(ad);
+                            var at = safeStr(a.generated_at || a.generatedAt || a.updated_at || a.updatedAt || '');
+                            var bt = safeStr(b.generated_at || b.generatedAt || b.updated_at || b.updatedAt || '');
+                            if (bt !== at) return bt.localeCompare(at);
+                            return safeStr(a.route_name || a.routeName).localeCompare(safeStr(b.route_name || b.routeName));
+                        });
+                        reroutes = items;
+                        renderReroutes();
+                    }, function () {});
+                    return;
+                }
+
+                unsubReroute = db.collection('reroutr').where('approved', '==', true).onSnapshot(function (snap) {
                     var items = [];
                     snap.forEach(function (doc) {
                         var d = doc.data() || {};
@@ -439,54 +472,68 @@
                     aiTraceBox.style.display = 'none';
                     return;
                 }
+                function prettyHeuristic(v) {
+                    var s = safeStr(v);
+                    if (s === 'weighted_nearest_neighbor_with_penalties') return 'Nearest-neighbor (distance + issue penalty)';
+                    return s;
+                }
+                function prettyCapacityPolicy(v) {
+                    var s = safeStr(v);
+                    if (s === 'december_truck1_full_go_dropoff_or_delegate') return 'If Truck 1 is full, send it to the drop-off or hand off the task';
+                    return s;
+                }
+                function prettyReason(v) {
+                    var s = safeStr(v);
+                    if (s === 'highest_score') return 'highest priority score';
+                    return s || 'reason not provided';
+                }
                 var lines = [];
                 var inputs = trace.inputs || {};
-                lines.push('Inputs');
-                lines.push('- items_count: ' + safeStr(inputs.items_count));
-                lines.push('- reports_count: ' + safeStr(inputs.reports_count));
-                lines.push('- matched_points: ' + safeStr(inputs.matched_points));
-                lines.push('- alpha: ' + safeStr(inputs.alpha));
-                lines.push('- issue_penalty: ' + safeStr(inputs.issue_penalty));
-                lines.push('- heuristic: ' + safeStr(inputs.heuristic));
+                lines.push('What the AI used');
+                lines.push('- Drop-off points considered: ' + safeStr(inputs.items_count));
+                lines.push('- Road reports considered: ' + safeStr(inputs.reports_count));
+                lines.push('- Drop-off points affected by reports: ' + safeStr(inputs.matched_points));
+                lines.push('- Distance weight (alpha): ' + safeStr(inputs.alpha));
+                lines.push('- Extra cost for road issues: ' + safeStr(inputs.issue_penalty));
+                lines.push('- Method: ' + prettyHeuristic(inputs.heuristic));
                 if (inputs.month != null && safeStr(inputs.month) !== '') {
-                    lines.push('- month: ' + safeStr(inputs.month));
+                    lines.push('- Month: ' + safeStr(inputs.month));
                 }
                 if (inputs.capacity_policy) {
-                    lines.push('- capacity_policy: ' + safeStr(inputs.capacity_policy));
+                    lines.push('- Capacity rule: ' + prettyCapacityPolicy(inputs.capacity_policy));
                 }
                 lines.push('');
 
                 var pts = Array.isArray(trace.points) ? trace.points.slice() : [];
                 if (pts.length) {
                     pts.sort(function (a, b) { return (Number(a.original_order) || 0) - (Number(b.original_order) || 0); });
-                    lines.push('Scoring per drop-off point');
+                    lines.push('Priority score for each drop-off');
                     pts.forEach(function (p) {
                         var nm = safeStr(p.location_name);
                         var sc = Number(p.score || 0);
-                        var issue = p.has_issue ? 'issue' : 'ok';
-                        lines.push('- ' + nm + ' | score=' + sc.toFixed(1) + ' | ' + issue);
+                        var issue = p.has_issue ? 'yes' : 'no';
+                        lines.push('- ' + nm + ' — score ' + sc.toFixed(1) + ' — road issue: ' + issue);
                     });
                     lines.push('');
                 }
 
                 var steps = Array.isArray(trace.steps) ? trace.steps : [];
                 if (steps.length) {
-                    lines.push('Decision steps');
+                    lines.push('How the AI chose the stop order');
                     steps.forEach(function (s, idx) {
                         if (s.type === 'start') {
-                            lines.push((idx + 1) + ') start at ' + safeStr(s.selected) + ' (' + safeStr(s.reason) + ')');
+                            lines.push((idx + 1) + ') Start at ' + safeStr(s.selected) + ' (' + prettyReason(s.reason) + ')');
                             return;
                         }
                         if (s.type === 'step') {
-                            lines.push((idx + 1) + ') from ' + safeStr(s.from) + ' → pick ' + safeStr(s.selected) +
-                                ' | dist_km=' + safeStr(s.selected_distance_km) + ' | cost=' + safeStr(s.selected_cost));
+                            lines.push((idx + 1) + ') From ' + safeStr(s.from) + ', go to ' + safeStr(s.selected) +
+                                ' (distance ' + safeStr(s.selected_distance_km) + ' km, cost ' + safeStr(s.selected_cost) + ')');
                             var cands = Array.isArray(s.candidates) ? s.candidates : [];
                             cands.slice(0, 3).forEach(function (c) {
-                                lines.push('   - candidate ' + safeStr(c.to) +
-                                    ' | dist=' + safeStr(c.distance_km) +
-                                    ' | penalty=' + safeStr(c.penalty) +
-                                    ' | score=' + safeStr(c.score) +
-                                    ' | cost=' + safeStr(c.cost));
+                                var pen = Number(c.penalty || 0);
+                                var penText = pen > 0 ? (' + issue penalty ' + safeStr(c.penalty)) : '';
+                                lines.push('   - Other option: ' + safeStr(c.to) +
+                                    ' (distance ' + safeStr(c.distance_km) + ' km, cost ' + safeStr(c.cost) + penText + ')');
                             });
                         }
                     });
@@ -498,7 +545,7 @@
 
             function setPicked(label) {
                 if (!workflowPicked) return;
-                workflowPicked.textContent = label || 'Pick a report';
+                workflowPicked.textContent = label || 'Select a report';
             }
 
             function getCsrfToken() {
@@ -576,6 +623,13 @@
                 });
             }
 
+            if (workflowTruckFull) {
+                workflowTruckFull.addEventListener('change', function () {
+                    previewReady = false;
+                    if (approveBtn) approveBtn.disabled = true;
+                });
+            }
+
             if (reportsList) {
                 reportsList.addEventListener('click', function (e) {
                     var li = e.target && e.target.closest ? e.target.closest('li.item') : null;
@@ -592,7 +646,12 @@
                     };
                     var desc = safeStr(li.getAttribute('data-desc') || '').trim();
                     if (workflowTruckFull) {
-                        workflowTruckFull.checked = /\bfull\b/i.test(desc) || /truck\s*full/i.test(desc) || /full\s+na/i.test(desc);
+                        var isTruck2 = /truck\s*2\s*full/i.test(desc) || /\btruck\s*two\s*full\b/i.test(desc);
+                        var isTruck1 = /truck\s*1\s*full/i.test(desc) || /\btruck\s*one\s*full\b/i.test(desc);
+                        if (isTruck2) workflowTruckFull.value = '2';
+                        else if (isTruck1) workflowTruckFull.value = '1';
+                        else if (/\bfull\b/i.test(desc) || /truck\s*full/i.test(desc) || /full\s+na/i.test(desc)) workflowTruckFull.value = '1';
+                        else workflowTruckFull.value = '';
                     }
                     setPicked('Selected: ' + (selectedLocation || 'Unknown Location'));
                     if (workflowLocationSelect) {
@@ -613,11 +672,12 @@
             if (approveBtn) {
                 approveBtn.addEventListener('click', function () {
                     if (!previewReady) {
-                        setWorkflowStatus('Generate preview first.', 'err');
+                        setWorkflowStatus('Generate a reroute suggestion first.', 'err');
                         return;
                     }
-                    setWorkflowStatus('Sending notifications to mobile…', '');
+                    setWorkflowStatus('Sending a mobile alert…', '');
                     var loc = selectedLocation || 'multiple locations';
+                    var fullTruck = workflowTruckFull ? safeStr(workflowTruckFull.value || '').trim() : '';
                     var payload = {
                         route_id: safeStr(selectedRoute.id),
                         route_name: safeStr(selectedRoute.name || 'Main Route'),
@@ -625,8 +685,8 @@
                         report_id: safeStr(selectedReport && selectedReport.id ? selectedReport.id : ''),
                         report_collection: safeStr(selectedReport && selectedReport.collection ? selectedReport.collection : ''),
                         date: workflowDate && safeStr(workflowDate.value) ? safeStr(workflowDate.value) : '',
-                        handoff: (workflowTruckFull && workflowTruckFull.checked) ? '1' : '',
-                        full_collector_id: (workflowTruckFull && workflowTruckFull.checked) ? '1' : '',
+                        handoff: fullTruck ? '1' : '',
+                        full_collector_id: fullTruck,
                     };
                     fetch('/api/approve-reroute/', {
                         method: 'POST',

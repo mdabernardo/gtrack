@@ -327,13 +327,6 @@
         .mini-name { font-weight: 800; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
         .mini-val { font-weight: 900; color: #111827; white-space: nowrap; }
 
-        #dashboardTruckMapWrap { width: 100%; height: 100%; }
-        #dashboardTruckMap {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-        }
         .schedules-list.dropoff-list { max-height: 260px; overflow: auto; padding-right: 4px; }
 
         details.mini-details {
@@ -564,13 +557,6 @@
 
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-icon">🚛</div>
-                        <div>
-                            <div class="stat-value" id="totalCollectorsCount">—</div>
-                            <div class="stat-label">Total Collectors</div>
-                        </div>
-                    </div>
-                    <div class="stat-card">
                         <div class="stat-icon">🗑️</div>
                         <div>
                             <div class="stat-value" id="highBinsCount">—</div>
@@ -585,15 +571,33 @@
                         </div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-icon">🛰️</div>
+                        <div class="stat-icon">🚚</div>
                         <div>
                             <div class="stat-value" id="liveTrackingCount">—</div>
                             <div class="stat-label">Live Tracking</div>
                         </div>
                     </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">👷</div>
+                        <div>
+                            <div class="stat-value" id="totalCollectorsCount">—</div>
+                            <div class="stat-label">Total Collectors</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="dash-grid">
+            <div class="dash-card">
+                <div class="dash-card-head">
+                    <h2 class="dash-card-title">Track Trucks</h2>
+                    <a class="dash-card-action" href="{% url 'track_trucks' %}">Open</a>
+                </div>
+                <div class="dash-card-body">
+                    <div class="muted">View live collector locations.</div>
+                    <div id="trackTrucksMiniMap" style="width:100%; height:140px; border-radius:10px; margin-top:10px;"></div>
+                    <div class="muted" id="trackTrucksMiniMapMeta" style="margin-top:6px;">—</div>
+                </div>
+            </div>
             <div class="dash-card">
                 <div class="dash-card-head">
                     <h2 class="dash-card-title">Garbage Level</h2>
@@ -602,21 +606,6 @@
                 <div class="dash-card-body">
                     <div id="dashboardGarbageMini" style="display:none;"></div>
                     <div id="dashboardGarbageOverview"></div>
-                </div>
-            </div>
-
-            <div class="dash-card">
-                <div class="dash-card-head">
-                    <h2 class="dash-card-title">Track Trucks</h2>
-                    <a class="dash-card-action" href="{% url 'track_trucks' %}">Open</a>
-                </div>
-                <div class="dash-card-body">
-                    <div class="dash-visual">
-                        <div class="dash-map" id="dashboardTruckMapWrap">
-                            <div id="dashboardTruckMap"></div>
-                            <div class="dash-map-overlay" id="truckMapOverlay">Loading map…</div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -683,42 +672,6 @@
                     </details>
                 </div>
             </div>
-
-            <div class="dash-card span-2">
-                <div class="dash-card-head">
-                    <h2 class="dash-card-title">AI Route Optimizer</h2>
-                    <span class="opt-metrics"><span id="optTotalDistance">—</span> km</span>
-                </div>
-                <div class="dash-card-body">
-                    <details class="mini-details">
-                        <summary><span>Open Optimizer</span><span class="muted">Expand</span></summary>
-                        <div class="mini-details-body">
-                            <div class="optimizer-row" style="margin-bottom:10px;">
-                                <select id="routeSelect">
-                                    <option value="">Select a route…</option>
-                                </select>
-                                <button id="optimizeBtn" type="button">Optimize</button>
-                            </div>
-                            <div class="optimization-results">
-                                <div class="optimization-panel">
-                                    <h5>Suggested Order</h5>
-                                    <ul class="opt-list" id="optList">
-                                        <li>Pick a route and click Optimize.</li>
-                                    </ul>
-                                </div>
-                                <div class="optimization-panel">
-                                    <h5>Mini Map</h5>
-                                    <div id="optimizationMap"></div>
-                                    <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-                                        <a id="optApiLink" class="opt-link" href="#" target="_blank" style="display:none;">Open Optimization API</a>
-                                        <span id="optArtifactId" style="font-size:0.85em; color:#7f8c8d;"></span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </details>
-                </div>
-            </div>
         </div>
     </div>
     
@@ -741,6 +694,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
     <!-- Google Maps for mini preview map -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAmLanEMQoY6NSEcacziav2xYyr4y8UOHU"></script>
     <script>
@@ -756,10 +710,51 @@
         };
         const app = firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
+        const auth = firebase.auth();
+        try { auth.signInAnonymously().catch((e)=>console.warn('Anonymous auth failed', e)); } catch (e) {}
         const routePoints = {{ route_points_json|default:"[]"|safe }};
         const MAIN_ROUTE_ID = "{{ route_id|default:'' }}";
     
         function canonKey(s){ return String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' '); }
+        function pickLatestKey(item){
+            const d = String(item.date || '').trim();
+            const t = String(item.time || '').trim();
+            if (d && t) return d + 'T' + t;
+            if (d) return d;
+            const id = String(item.id || '').trim();
+            if (/^\d{4}-\d{2}-\d{2}/.test(id)) return id.slice(0, 10);
+            return '';
+        }
+        function pickLatestPerLocation(items){
+            const byLoc = new Map();
+            items.forEach((it)=>{
+                const nameRaw = (it.location || it.location_name || it.locationName || it.name || '').toString().trim();
+                if(!nameRaw) return;
+                const key = canonKey(nameRaw);
+                const k = pickLatestKey(it);
+                const raw = (it.garbageLevel ?? it.garbage_level ?? it.level ?? it.severity ?? it.status);
+                const pct = rawToPercent(raw);
+                const prev = byLoc.get(key);
+                if(!prev){
+                    byLoc.set(key, { key, item: it, latestKey: k, percent: pct });
+                    return;
+                }
+                if(k && prev.latestKey){
+                    if(k > prev.latestKey){
+                        byLoc.set(key, { key, item: it, latestKey: k, percent: pct });
+                    }
+                    return;
+                }
+                if(k && !prev.latestKey){
+                    byLoc.set(key, { key, item: it, latestKey: k, percent: pct });
+                    return;
+                }
+                if(!k && !prev.latestKey && pct > (prev.percent || 0)){
+                    byLoc.set(key, { key, item: it, latestKey: k, percent: pct });
+                }
+            });
+            return Array.from(byLoc.values()).map(x=>x.item);
+        }
         function rawToPercent(raw){
             if(raw==null || raw==='') return 0;
             if(typeof raw === 'number') return Math.max(0, Math.min(100, raw));
@@ -785,23 +780,20 @@
         function computeOverallByRoute(items){
             const pts = Array.isArray(routePoints) ? routePoints.slice().sort((a,b)=>(a.order||0)-(b.order||0)) : [];
             const allowed = new Set(pts.map(p=>canonKey(p.location_name)).filter(Boolean));
-            const agg = new Map();
-            items.forEach(it=>{
+            const currentItems = pickLatestPerLocation(Array.isArray(items) ? items : []);
+            const pctByKey = new Map();
+            currentItems.forEach(it=>{
                 const nm = (it.location || it.location_name || it.locationName || it.name || '').toString().trim();
                 if(!nm) return;
                 const k = canonKey(nm);
                 if(!allowed.has(k)) return;
                 const raw = (it.garbageLevel ?? it.garbage_level ?? it.level ?? it.severity ?? it.status);
-                const pct = rawToPercent(raw);
-                const prev = agg.get(k) || { sum:0, count:0 };
-                agg.set(k, { sum: prev.sum + pct, count: prev.count + 1 });
+                pctByKey.set(k, rawToPercent(raw));
             });
             return pts.map(p=>{
                 const nm = String(p.location_name||'').trim();
                 const k = canonKey(nm);
-                const v = agg.get(k);
-                const avg = v && v.count ? (v.sum / v.count) : 0;
-                const pct = Math.round(avg);
+                const pct = Math.round(pctByKey.get(k) || 0);
                 return { name: nm, percent: pct, label: labelFromPercent(pct), color: colorFromPercent(pct) };
             });
         }
@@ -812,10 +804,11 @@
                 el.innerHTML = '<div class=\"dga-topline\"><div class=\"dga-toplabel\">Highest overall</div><div class=\"dga-topvalue\">—</div></div><div class=\"dga-sub\">Bar chart (overall average)</div><div class=\"dga-list\"></div>';
                 return;
             }
-            const best = rows.slice().sort((a, b) => b.percent - a.percent)[0];
+            const sortedRows = rows.slice().sort((a, b) => (b.percent - a.percent) || String(a.name || '').localeCompare(String(b.name || '')));
+            const best = sortedRows[0];
             const top = '<div class=\"dga-topline\"><div class=\"dga-toplabel\">Highest overall</div><div class=\"dga-topvalue\">' + (best ? (best.name + ' — ' + best.label) : '—') + '</div></div>';
             const sub = '<div class=\"dga-sub\">Bar chart (overall average)</div>';
-            const list = rows.map((r) => {
+            const list = sortedRows.map((r) => {
                 const pct = Math.max(0, Math.min(100, r.percent || 0));
                 return (
                     '<div>' +
@@ -833,10 +826,11 @@
                 el.innerHTML = '<div class=\"dga-topline\"><div class=\"dga-toplabel\">Highest overall</div><div class=\"dga-topvalue\">—</div></div><div class=\"dga-sub\">Bar chart (overall average)</div><div class=\"dga-list\"></div>';
                 return;
             }
-            const best = rows.slice().sort((a, b) => b.percent - a.percent)[0];
+            const sortedRows = rows.slice().sort((a, b) => (b.percent - a.percent) || String(a.name || '').localeCompare(String(b.name || '')));
+            const best = sortedRows[0];
             const top = '<div class=\"dga-topline\"><div class=\"dga-toplabel\">Highest overall</div><div class=\"dga-topvalue\">' + (best ? (best.name + ' — ' + best.label) : '—') + '</div></div>';
             const sub = '<div class=\"dga-sub\">Bar chart (overall average)</div>';
-            const list = rows.map((r) => {
+            const list = sortedRows.map((r) => {
                 const pct = Math.max(0, Math.min(100, r.percent || 0));
                 return (
                     '<div>' +
@@ -847,8 +841,22 @@
             }).join('');
             el.innerHTML = top + sub + '<div class=\"dga-list\">' + list + '</div>';
         }
+        function shouldRenderAnalysis(){
+            return !!(document.getElementById('dashboardGarbageMini') || document.getElementById('dashboardGarbageOverview'));
+        }
+        function refreshGarbageAnalysis(){
+            if(!shouldRenderAnalysis()) return;
+            db.collection('garbagelevel').get().then((snapshot)=>{
+                const items = snapshot.docs.map(d=>({ id:d.id, ...d.data() }));
+                const rows = computeOverallByRoute(items);
+                renderMiniAnalysis(rows);
+                renderOverviewAnalysis(rows);
+            }).catch((err)=>console.error('Firestore get error', err));
+        }
         db.collection('garbagelevel').onSnapshot((snapshot)=>{
+            if(!shouldRenderAnalysis()) return;
             const items = snapshot.docs.map(d=>({ id:d.id, ...d.data() }));
+            window.__cache_garbagelevel = items;
             const rows = computeOverallByRoute(items);
             renderMiniAnalysis(rows);
             renderOverviewAnalysis(rows);
@@ -937,91 +945,117 @@
             if (el) el.textContent = String(count);
         });
 
-        // Live mini map for Track Trucks card
-        (function initDashboardMiniMap(){
-            const el = document.getElementById('dashboardTruckMap');
-            const overlay = document.getElementById('truckMapOverlay');
-            if (!el) return;
-            if (typeof google === 'undefined' || !google.maps) {
-                if (overlay) overlay.textContent = 'Map unavailable';
-                return;
-            }
-
-            function init() {
-                const map = new google.maps.Map(el, {
-                    center: { lat: 14.5995, lng: 120.9842 },
-                    zoom: 12,
-                    disableDefaultUI: true
+        (function initCollectorStats(){
+            const totalEl = document.getElementById('totalCollectorsCount');
+            const liveEl = document.getElementById('liveTrackingCount');
+            const miniMapEl = document.getElementById('trackTrucksMiniMap');
+            const miniMetaEl = document.getElementById('trackTrucksMiniMapMeta');
+            if (!totalEl && !liveEl) return;
+            const CATMON_CENTER = { lat: 14.6591, lng: 120.9569 };
+            let miniMap = null;
+            let miniMarkers = new Map();
+            function ensureMiniMap(center){
+                if (!miniMapEl) return null;
+                if (miniMap) return miniMap;
+                if (typeof google === 'undefined' || !google.maps) {
+                    if (miniMetaEl) miniMetaEl.textContent = 'Map unavailable.';
+                    return null;
+                }
+                miniMap = new google.maps.Map(miniMapEl, {
+                    center: center || CATMON_CENTER,
+                    zoom: 15,
+                    disableDefaultUI: true,
+                    clickableIcons: false,
+                    gestureHandling: 'greedy',
                 });
-                let overlayHidden = false;
-                function hideOverlay() {
-                    if (!overlayHidden && overlay) {
-                        overlayHidden = true;
-                        overlay.style.display = 'none';
-                    }
+                return miniMap;
+            }
+            function parseLatLng(d){
+                let lat = d.latitude ?? d.lat;
+                let lng = d.longitude ?? d.lng;
+                if ((lat == null || lng == null) && d.location && typeof d.location === 'object') {
+                    lat = d.location.latitude ?? d.location.lat;
+                    lng = d.location.longitude ?? d.location.lng;
                 }
-                google.maps.event.addListenerOnce(map, 'tilesloaded', hideOverlay);
-                google.maps.event.addListenerOnce(map, 'idle', hideOverlay);
-                setTimeout(function () {
-                    google.maps.event.trigger(map, 'resize');
-                    map.setCenter({ lat: 14.5995, lng: 120.9842 });
-                }, 60);
-                setTimeout(function () {
-                    if (!overlayHidden && overlay) overlay.textContent = 'Map failed to load';
-                }, 4500);
-                const markers = {};
-                function getTruckIcon(size = 28) {
-                    const svg = `<?xml version="1.0" encoding="UTF-8"?>
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-                      <rect x="8" y="22" width="30" height="18" rx="3" fill="#32a000"/>
-                      <rect x="38" y="26" width="14" height="14" rx="2" fill="#4caf50"/>
-                      <rect x="44" y="24" width="6" height="6" rx="1" fill="#c8e6c9"/>
-                      <circle cx="18" cy="42" r="5" fill="#263238"/>
-                      <circle cx="47" cy="42" r="5" fill="#263238"/>
-                      <circle cx="18" cy="42" r="2" fill="#90a4ae"/>
-                      <circle cx="47" cy="42" r="2" fill="#90a4ae"/>
-                    </svg>`;
-                    return {
-                        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-                        scaledSize: new google.maps.Size(size, size),
-                        anchor: new google.maps.Point(size / 2, size * 0.75),
-                    };
-                }
-                const bounds = new google.maps.LatLngBounds();
-                function upsertMarker(id, lat, lng) {
-                    const pos = { lat: parseFloat(lat), lng: parseFloat(lng) };
-                    let m = markers[id];
-                    if (!m) {
-                        m = new google.maps.Marker({ position: pos, map, title: `Collector ${id}`, icon: getTruckIcon(28) });
-                        markers[id] = m;
-                    } else {
-                        m.setPosition(pos);
-                    }
-                    bounds.extend(pos);
-                    if (!bounds.isEmpty()) map.fitBounds(bounds);
-                }
+                const nLat = Number(lat);
+                const nLng = Number(lng);
+                if (!Number.isFinite(nLat) || !Number.isFinite(nLng)) return null;
+                return { lat: nLat, lng: nLng };
+            }
+            try {
                 db.collection('collectors').onSnapshot((snapshot) => {
-                    snapshot.docChanges().forEach((chg) => {
-                        const id = chg.doc.id;
-                        const d = chg.doc.data() || {};
-                        const lat = typeof d.latitude === 'string' ? parseFloat(d.latitude) : d.latitude;
-                        const lng = typeof d.longitude === 'string' ? parseFloat(d.longitude) : d.longitude;
-                        if (chg.type === 'removed') {
-                            if (markers[id]) { markers[id].setMap(null); delete markers[id]; }
+                    let total = 0;
+                    let live = 0;
+                    const liveKeys = new Set();
+                    const positions = [];
+                    snapshot.forEach(doc => {
+                        total += 1;
+                        const d = doc.data() || {};
+                        const pos = parseLatLng(d);
+                        if (pos) {
+                            live += 1;
+                            liveKeys.add(doc.id);
+                            positions.push({ id: doc.id, pos, data: d });
+                        }
+                    });
+                    if (totalEl) totalEl.textContent = String(total);
+                    if (liveEl) liveEl.textContent = String(live);
+
+                    if (miniMetaEl) miniMetaEl.textContent = live ? ('Showing ' + live + ' of ' + total + ' collectors') : ('No live locations yet.');
+
+                    const map = ensureMiniMap(positions[0] ? positions[0].pos : CATMON_CENTER);
+                    if (!map) return;
+
+                    miniMarkers.forEach((marker, key) => {
+                        if (!liveKeys.has(key)) {
+                            try { marker.setMap(null); } catch (e) {}
+                            miniMarkers.delete(key);
+                        }
+                    });
+
+                    positions.forEach((it) => {
+                        const existing = miniMarkers.get(it.id);
+                        if (existing) {
+                            try { existing.setPosition(it.pos); } catch (e) {}
                             return;
                         }
-                        if (lat != null && lng != null) upsertMarker(id, lat, lng);
+                        const cid = String(it.data.collectorId || it.data.collector_id || '').trim();
+                        const label = (cid === '1' || cid === '2') ? cid : '';
+                        const marker = new google.maps.Marker({
+                            position: it.pos,
+                            map,
+                            label: label || undefined,
+                        });
+                        miniMarkers.set(it.id, marker);
                     });
-                    const liveEl = document.getElementById('liveTrackingCount');
-                    if (liveEl) liveEl.textContent = String(Object.keys(markers).length);
-                    const totalEl = document.getElementById('totalCollectorsCount');
-                    if (totalEl) totalEl.textContent = '2';
-                }, (err) => console.warn('Collectors listen error', err));
-            }
 
-            requestAnimationFrame(function () {
-                requestAnimationFrame(init);
-            });
+                    if (positions.length >= 2) {
+                        try {
+                            const bounds = new google.maps.LatLngBounds();
+                            positions.forEach(p => bounds.extend(p.pos));
+                            map.fitBounds(bounds, 20);
+                        } catch (e) {}
+                    } else if (positions.length === 1) {
+                        try {
+                            map.setCenter(positions[0].pos);
+                            map.setZoom(16);
+                        } catch (e) {}
+                    } else {
+                        try {
+                            map.setCenter(CATMON_CENTER);
+                            map.setZoom(14);
+                        } catch (e) {}
+                    }
+                }, () => {
+                    if (totalEl) totalEl.textContent = '—';
+                    if (liveEl) liveEl.textContent = '—';
+                    if (miniMetaEl) miniMetaEl.textContent = '—';
+                });
+            } catch (e) {
+                if (totalEl) totalEl.textContent = '—';
+                if (liveEl) liveEl.textContent = '—';
+                if (miniMetaEl) miniMetaEl.textContent = '—';
+            }
         })();
 
         // --- Optimizer controls inside Drop‑off card ---
@@ -1049,31 +1083,58 @@
               .catch(err => console.warn('Routes fetch error', err));
 
             let map, pathPolyline;
+            let mapMarkers = [];
+            const CATMON_CENTER = { lat: 14.6591, lng: 120.9569 };
+            const CATMON_RADIUS_KM = 5;
+            function haversineKm(a, b){
+                const toRad = deg => deg * Math.PI / 180;
+                const R = 6371;
+                const dLat = toRad((b.lat - a.lat));
+                const dLng = toRad((b.lng - a.lng));
+                const lat1 = toRad(a.lat);
+                const lat2 = toRad(b.lat);
+                const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+                return 2 * R * Math.asin(Math.sqrt(h));
+            }
+            function withinCatmonLatLng(lat, lng){
+                const a = { lat: Number(lat), lng: Number(lng) };
+                if (!Number.isFinite(a.lat) || !Number.isFinite(a.lng)) return false;
+                return haversineKm(a, CATMON_CENTER) <= CATMON_RADIUS_KM;
+            }
             function ensureMap() {
                 if (!mapEl || typeof google === 'undefined' || !google.maps) return null;
                 if (!map) {
                     map = new google.maps.Map(mapEl, {
-                        center: { lat: 14.5995, lng: 120.9842 },
-                        zoom: 12,
+                        center: CATMON_CENTER,
+                        zoom: 14,
                         disableDefaultUI: true
                     });
                 }
                 return map;
             }
+            function clearMapMarkers(){
+                if (Array.isArray(mapMarkers) && mapMarkers.length) {
+                    mapMarkers.forEach(m => { try { m.setMap(null); } catch (e) {} });
+                }
+                mapMarkers = [];
+            }
             function renderOnMap(points) {
                 const m = ensureMap();
                 if (!m || !Array.isArray(points)) return;
                 if (pathPolyline) { pathPolyline.setMap(null); pathPolyline = null; }
+                clearMapMarkers();
                 const bounds = new google.maps.LatLngBounds();
                 const path = [];
                 points.forEach((p, idx) => {
                     const lat = parseFloat(p.latitude);
                     const lng = parseFloat(p.longitude);
                     if (isNaN(lat) || isNaN(lng)) return;
+                    if (!withinCatmonLatLng(lat, lng)) return;
                     const pos = { lat, lng };
                     path.push(pos);
                     bounds.extend(pos);
-                    new google.maps.Marker({ position: pos, map: m, label: String((p.order ?? idx+1)) });
+                    const marker = new google.maps.Marker({ position: pos, map: m, label: String((p.order ?? idx+1)) });
+                    mapMarkers.push(marker);
                 });
                 if (path.length >= 2) {
                     pathPolyline = new google.maps.Polyline({
@@ -1085,7 +1146,12 @@
                     });
                     pathPolyline.setMap(m);
                 }
-                if (!bounds.isEmpty()) m.fitBounds(bounds);
+                if (!bounds.isEmpty()) {
+                    m.fitBounds(bounds);
+                } else {
+                    m.setCenter(CATMON_CENTER);
+                    m.setZoom(14);
+                }
             }
 
             function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
@@ -1141,6 +1207,7 @@
             const listEl = document.getElementById('dropoffsList');
             if (!listEl) return;
             db.collection('dropofflocation').onSnapshot((snapshot) => {
+                window.__cache_dropofflocation = snapshot.docs.map(d=>({ id:d.id, ...d.data() }));
                 const countEl = document.getElementById('activeDropoffsCount');
                 const pts = Array.isArray(routePoints) ? routePoints.slice().sort((a,b)=>(a.order||0)-(b.order||0)) : [];
                 const desired = pts.map(p => ({ key: canonKey(p.location_name), name: String(p.location_name || '').trim() })).filter(x => x.key);
@@ -1232,36 +1299,53 @@
               .catch(err => console.warn('Routes fetch error', err));
 
             let map, pathPolyline;
+            let mapMarkers = [];
+            const CATMON_CENTER = { lat: 14.6591, lng: 120.9569 };
+            const CATMON_RADIUS_KM = 5;
+            function withinCatmonLatLng(lat, lng){
+                const a = { lat: Number(lat), lng: Number(lng) };
+                if (!Number.isFinite(a.lat) || !Number.isFinite(a.lng)) return false;
+                return haversineKm(a, CATMON_CENTER) <= CATMON_RADIUS_KM;
+            }
             function ensureMap() {
                 if (!mapEl || typeof google === 'undefined' || !google.maps) return null;
                 if (!map) {
                     map = new google.maps.Map(mapEl, {
-                        center: { lat: 14.5995, lng: 120.9842 },
-                        zoom: 12,
+                        center: CATMON_CENTER,
+                        zoom: 14,
                         disableDefaultUI: true
                     });
                 }
                 return map;
+            }
+            function clearMapMarkers(){
+                if (Array.isArray(mapMarkers) && mapMarkers.length) {
+                    mapMarkers.forEach(m => { try { m.setMap(null); } catch (e) {} });
+                }
+                mapMarkers = [];
             }
             function renderOnMap(points) {
                 const m = ensureMap();
                 if (!m || !Array.isArray(points)) return;
                 // Clear previous polyline
                 if (pathPolyline) { pathPolyline.setMap(null); pathPolyline = null; }
+                clearMapMarkers();
                 const bounds = new google.maps.LatLngBounds();
                 const path = [];
                 points.forEach((p, idx) => {
                     const lat = parseFloat(p.latitude);
                     const lng = parseFloat(p.longitude);
                     if (isNaN(lat) || isNaN(lng)) return;
+                    if (!withinCatmonLatLng(lat, lng)) return;
                     const pos = { lat, lng };
                     path.push(pos);
                     bounds.extend(pos);
-                    new google.maps.Marker({
+                    const marker = new google.maps.Marker({
                         position: pos,
                         map: m,
                         label: String((p.order ?? idx+1)),
                     });
+                    mapMarkers.push(marker);
                 });
                 if (path.length >= 2) {
                     pathPolyline = new google.maps.Polyline({
@@ -1273,17 +1357,52 @@
                     });
                     pathPolyline.setMap(m);
                 }
-                if (!bounds.isEmpty()) m.fitBounds(bounds);
+                if (!bounds.isEmpty()) {
+                    m.fitBounds(bounds);
+                } else {
+                    m.setCenter(CATMON_CENTER);
+                    m.setZoom(14);
+                }
             }
 
             function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+            function humanizeErr(err){
+                const msg = (err && (err.message || err.toString())) ? String(err.message || err.toString()) : 'Unknown error';
+                if (msg.toLowerCase().includes('permission')) return 'Firestore permission denied. Check Firebase rules or login.';
+                if (msg.toLowerCase().includes('network')) return 'Network error. Check connection and try again.';
+                return msg;
+            }
 
             // --- Auto optimization using Firestore garbage levels + drop-offs ---
             const LEVEL_WEIGHT = { low: 1, medium: 2, high: 3, extreme: 4 };
+            function coordKey(lat, lng){
+                const a = Number(lat);
+                const b = Number(lng);
+                if (!Number.isFinite(a) || !Number.isFinite(b)) return '';
+                return `${a.toFixed(5)},${b.toFixed(5)}`;
+            }
+            function collapseByCoords(list){
+                const best = new Map();
+                (list || []).forEach(p => {
+                    const key = coordKey(p.latitude, p.longitude);
+                    if (!key) return;
+                    const prev = best.get(key);
+                    const prevW = prev ? (prev._weight || 0) : -1;
+                    const nextW = p ? (p._weight || 0) : -1;
+                    if (!prev || nextW > prevW) best.set(key, p);
+                });
+                return Array.from(best.values());
+            }
             async function fetchGarbageAndDropoffs() {
                 // Requires Firebase initialized earlier on the page
-                if (typeof firebase === 'undefined') return { garbage: [], dropoffs: [] };
-                const db = firebase.firestore();
+                if (typeof firebase === 'undefined' || !db || typeof db.collection !== 'function') {
+                    throw new Error('Firestore not initialized on this page.');
+                }
+                const cachedGarbage = window.__cache_garbagelevel;
+                const cachedDropoffs = window.__cache_dropofflocation;
+                if (Array.isArray(cachedGarbage) && Array.isArray(cachedDropoffs) && cachedGarbage.length && cachedDropoffs.length) {
+                    return { garbage: cachedGarbage, dropoffs: cachedDropoffs };
+                }
                 const [garbageSnap, dropSnap] = await Promise.all([
                     db.collection('garbagelevel').get(),
                     db.collection('dropofflocation').get(),
@@ -1371,14 +1490,16 @@
                             longitude: drop.longitude,
                         };
                     }).filter(Boolean);
+                    selected = selected.filter(p => withinCatmonLatLng(p.latitude, p.longitude));
                     if (!selected.length){
-                        listEl.innerHTML = '<li>No matching drop-offs for the selected garbage level.</li>';
+                        listEl.innerHTML = '<li>No matching drop-offs near Catmon for the selected garbage level.</li>';
                         totalEl.textContent = '—';
                         renderOnMap([]);
                         return;
                     }
                     // weight by level
                     selected.forEach(s => { s._weight = LEVEL_WEIGHT[String(s.garbageLevel||'').toLowerCase()] || 1; });
+                    selected = collapseByCoords(selected);
                     const { order, totalKm } = greedyNearest(selected);
                     totalEl.textContent = (totalKm || 0).toFixed(2);
                     // render list
@@ -1398,7 +1519,7 @@
                     renderOnMap(pts);
                 } catch (err) {
                     console.warn('Auto optimization error', err);
-                    listEl.innerHTML = '<li>Auto optimization failed. Try again later.</li>';
+                    listEl.innerHTML = `<li>Auto optimization failed: ${esc(humanizeErr(err))}</li>`;
                     totalEl.textContent = '—';
                     renderOnMap([]);
                 }
@@ -1421,13 +1542,30 @@
                 apiLinkEl.style.display = 'none';
                 artifactEl.textContent = '';
                 fetch(url)
-                  .then(r => r.ok ? r.json() : Promise.reject(new Error('Optimize API failed')))
+                  .then(async (r) => {
+                      if (r.ok) return r.json();
+                      const txt = await r.text().catch(()=>'');
+                      throw new Error(`Optimize API failed (${r.status}) ${txt}`.trim());
+                  })
                   .then(data => {
-                      const pts = (data && data.suggested_points) || [];
+                      let pts = (data && data.suggested_points) || [];
+                      if (Array.isArray(pts)) {
+                          const seen = new Set();
+                          pts = pts.filter(p => {
+                              const key = coordKey(p?.latitude, p?.longitude);
+                              if (!key) return false;
+                              if (seen.has(key)) return false;
+                              seen.add(key);
+                              return true;
+                          });
+                          pts = pts.filter(p => withinCatmonLatLng(p?.latitude, p?.longitude));
+                      } else {
+                          pts = [];
+                      }
                       const totalKm = data?.factors?.total_distance_km;
                       totalEl.textContent = typeof totalKm === 'number' ? totalKm.toFixed(2) : '—';
                       if (!pts.length) {
-                          listEl.innerHTML = '<li>No points available for this route.</li>';
+                          listEl.innerHTML = '<li>No points near Catmon for this route.</li>';
                           renderOnMap([]);
                           return;
                       }
@@ -1452,7 +1590,7 @@
                   })
                   .catch(err => {
                       console.warn('Optimize error', err);
-                      listEl.innerHTML = '<li>Optimization failed. Try again later.</li>';
+                      listEl.innerHTML = `<li>Optimization failed: ${esc(humanizeErr(err))}</li>`;
                       totalEl.textContent = '—';
                       renderOnMap([]);
                   });

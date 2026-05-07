@@ -543,6 +543,8 @@
          * 3. Sets up the real-time listener for the currently selected status (Pending, Verified, or Rejected).
          */
         function setupRealtimeListener() {
+            if (window.__residentVerificationInFlight) return;
+            window.__residentVerificationInFlight = true;
             const listContentElement = document.getElementById('pendingListContent');
             const noSelectionElement = document.getElementById('no-resident-selected');
             const detailsContentElement = document.getElementById('resident-details-content');
@@ -603,6 +605,9 @@
                 .catch((error) => {
                     console.error("Failed to load resident verification requests:", error);
                     listContentElement.innerHTML = '<p style="padding: 15px 20px; color: red;">Error loading data.</p>';
+                })
+                .finally(() => {
+                    window.__residentVerificationInFlight = false;
                 });
         }
 

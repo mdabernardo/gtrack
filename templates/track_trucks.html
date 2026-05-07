@@ -48,18 +48,70 @@
     .main { padding: 20px; max-width: 1000px; margin: 0 auto; }
     #map { height: 70vh; width: 100%; border-radius: 12px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); background: #fff; }
     .status { margin-top: 10px; color: #333; }
-    /* Optimizer embed styles */
-    .optimizer-card{margin-top:18px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:16px}
-    .opt-row{display:flex;gap:16px;align-items:flex-start}
-    .opt-col{flex:1}
-    .opt-controls{display:flex;gap:12px;align-items:center;margin-bottom:12px}
-    .opt-depot{display:flex;gap:8px;align-items:center}
-    .opt-depot input{width:110px}
-    .opt-filters{display:flex;gap:8px;align-items:center;margin:8px 0}
-    #optList{height:280px;overflow:auto;border:1px solid #eee;border-radius:8px;padding:8px}
-    #optimizerMap{height:280px;border:1px solid #eee;border-radius:8px}
-    .muted{color:#6b7280}
-    .pill{background:#e5f5e0;color:#256b00;border-radius:999px;padding:4px 8px;font-size:12px}
+
+    .card {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+        padding: 14px;
+        margin-top: 14px;
+    }
+    .muted { color: #6b7280; }
+    .opt-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .pill { background:#e5f5e0; color:#256b00; border-radius:999px; padding:4px 10px; font-size:12px; white-space:nowrap; }
+    .opt-controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:10px; }
+    .opt-controls select, .opt-controls input { padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px; font-size:14px; }
+    .opt-controls button { padding:8px 12px; border:1px solid #256b00; background:#32a000; color:#fff; border-radius:10px; font-weight:700; cursor:pointer; }
+    .opt-grid { display:flex; gap:12px; margin-top:12px; flex-wrap:wrap; }
+    .opt-col { flex:1; min-width:280px; }
+    #optimizerMap { height: 260px; border-radius: 10px; border: 1px solid #e5e7eb; }
+    #optList { height: 260px; overflow:auto; border-radius:10px; border: 1px solid #e5e7eb; padding:10px; background:#fff; }
+    .opt-item { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid #f1f5f9; }
+    .opt-item:last-child { border-bottom:none; }
+    .opt-num { width:24px; height:24px; border-radius:999px; background:#ff3838; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex:0 0 auto; }
+    .opt-name { font-weight:700; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .opt-sub { font-size:12px; color:#6b7280; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .opt-tag { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; text-transform:capitalize; }
+    .opt-tag.high { background:#fee2e2; color:#b91c1c; }
+    .opt-tag.medium { background:#ffedd5; color:#c2410c; }
+    .opt-tag.low { background:#dbeafe; color:#1d4ed8; }
+
+    .opt-jump {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: #32a000;
+        color: #fff;
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 13px;
+        border: 1px solid #256b00;
+    }
+    .opt-jump:hover { background: #2b8d00; }
+    .opt-fab {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        z-index: 999;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: #32a000;
+        color: #fff;
+        border: 1px solid #256b00;
+        font-weight: 800;
+        cursor: pointer;
+        box-shadow: 0 10px 18px rgba(0,0,0,0.18);
+    }
+    .opt-fab:hover { background: #2b8d00; }
+
+    @media (max-width: 900px) {
+        .opt-grid { flex-direction: column; }
+        .opt-col { min-width: 0; }
+        #optList { height: 320px; }
+        #optimizerMap { height: 240px; }
+    }
 </style>
 {% endblock %}
 
@@ -119,48 +171,47 @@
 
 <div class="main">
     <h1 style="color:#32a000; margin-top:0;">Track Garbage Trucks</h1>
+    <div style="margin: 8px 0 12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <a class="opt-jump" href="#aiOptimizerCard">AI Route Optimization ↓</a>
+        <span class="muted" style="font-size:12px;">Scroll down after the map to use the optimizer.</span>
+    </div>
     <div id="map"></div>
     <div class="status" id="status">Initializing map and real-time tracking...</div>
+    <button class="opt-fab" type="button" onclick="document.getElementById('aiOptimizerCard')?.scrollIntoView({behavior:'smooth', block:'start'});">AI Optimize</button>
 
-    <!-- Embedded AI Route Optimizer under the tracking map -->
-    <div class="optimizer-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div style="font-weight:700;font-size:18px;color:#0b2f11">AI Route Optimizer</div>
-            <div><span id="optTotalKm" class="pill">— km total</span></div>
+    <div class="card" id="aiOptimizerCard">
+        <div class="opt-head">
+            <div style="font-weight:700; color:#0b2f11;">AI Route Optimization</div>
+            <div class="pill" id="optTotalKm">— km total</div>
         </div>
         <div class="opt-controls">
             <select id="optRouteSelect">
                 <option value="">Select a route...</option>
             </select>
-            <button id="optimizeBtn" class="btn btn-success">Optimize Route</button>
-            <span class="muted">Choose an existing route or auto option.</span>
-        </div>
-        <div class="opt-filters">
-            <label class="muted">Min level:</label>
             <select id="optMinLevel">
-                <option value="any">All levels</option>
-                <option value="low">≥ Low</option>
-                <option value="medium" selected>≥ Medium</option>
-                <option value="high">≥ High</option>
+                <option value="">Any level</option>
+                <option value="high">High only</option>
+                <option value="medium">Medium+</option>
+                <option value="low">Low+</option>
             </select>
-        </div>
-        <div class="opt-depot">
-            <label class="muted">Start at:</label>
             <select id="optDepotSelect">
-                <option value="map_center" selected>Map center</option>
-                <option value="first_point">First optimized point</option>
-                <option value="custom">Custom (lat/lng)</option>
+                <option value="map_center">Depot: Map center</option>
+                <option value="first_point">Depot: First point</option>
+                <option value="custom">Depot: Custom</option>
             </select>
-            <input id="optDepotLat" type="text" placeholder="lat" style="display:none"/>
-            <input id="optDepotLng" type="text" placeholder="lng" style="display:none"/>
+            <input id="optDepotLat" type="number" step="any" placeholder="Depot lat" style="display:none; width:140px;">
+            <input id="optDepotLng" type="number" step="any" placeholder="Depot lng" style="display:none; width:140px;">
+            <button id="optimizeBtn" type="button">Optimize</button>
+            <span class="muted" style="font-size:12px;">Pick a route or auto option, then Optimize.</span>
         </div>
-        <div class="opt-row">
+        <div class="muted" id="optModeMeta" style="margin-top:8px; font-size:12px;">—</div>
+        <div class="opt-grid">
             <div class="opt-col">
-                <div class="muted" style="margin:6px 0">Suggested Order</div>
-                <div id="optList">Pick a route and click Optimize.</div>
+                <div class="muted" style="margin:6px 0; font-size:12px;">Suggested order</div>
+                <div id="optList"><div class="muted">Select a route above and click Optimize.</div></div>
             </div>
             <div class="opt-col">
-                <div class="muted" style="margin:6px 0">Mini Map</div>
+                <div class="muted" style="margin:6px 0; font-size:12px;">Mini map</div>
                 <div id="optimizerMap"></div>
             </div>
         </div>
@@ -290,7 +341,7 @@
                 statusEl.textContent = 'Unable to track collectors right now.';
             });
 
-            // ===== AI Optimizer embed logic =====
+            if (document.getElementById('optRouteSelect')) {
             const optRouteSel = document.getElementById('optRouteSelect');
             const optListEl = document.getElementById('optList');
             const optTotalEl = document.getElementById('optTotalKm');
@@ -298,6 +349,7 @@
             const optDepotLat = document.getElementById('optDepotLat');
             const optDepotLng = document.getElementById('optDepotLng');
             const optMinLevelSel = document.getElementById('optMinLevel');
+            const optModeMetaEl = document.getElementById('optModeMeta');
 
             optDepotSel.addEventListener('change', () => {
               const show = optDepotSel.value === 'custom';
@@ -326,18 +378,81 @@
                 .forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;og.appendChild(o);});
               optRouteSel.appendChild(og);
             }
+            function fmtIsoDate(d){
+              const x = d || new Date();
+              const y = x.getFullYear();
+              const m = String(x.getMonth()+1).padStart(2,'0');
+              const day = String(x.getDate()).padStart(2,'0');
+              return `${y}-${m}-${day}`;
+            }
+            function ymdCompact(iso){
+              const s = String(iso||'').trim();
+              const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+              if(!m) return '';
+              return `${m[1]}${m[2]}${m[3]}`;
+            }
+            function setOptModeMeta(extra){
+              if(!optModeMetaEl) return;
+              const val = String(optRouteSel.value || '');
+              if(!val){
+                optModeMetaEl.textContent = 'Mode: —';
+                return;
+              }
+              if(val.startsWith('auto-')){
+                optModeMetaEl.textContent = `Mode: Auto (reads Firestore: garbagelevel + dropofflocation). ${extra || 'Not saved to Firestore.'}`;
+                return;
+              }
+              const iso = fmtIsoDate();
+              const docId = `${val}_${ymdCompact(iso)}`;
+              optModeMetaEl.textContent = `Mode: API Route (calls /api/routes/${val}/optimize/). Expected Firestore write: route_suggestion/${docId}. ${extra || ''}`.trim();
+            }
 
             function displayName(obj, fallback){
-              const cands = [obj?.location_name, obj?.locationName, obj?.name, obj?.location, obj?.site, obj?.dropoffName, fallback];
+              const cands = [obj?.location_name, obj?.locationName, obj?.name, obj?.location, obj?.site, obj?.dropoffName, obj?.label, obj?.title, obj?.id, fallback];
               return (cands.find(v=>typeof v==='string' && v.trim().length) || '').trim();
             }
             function normalizeName(obj, fallback){
               return displayName(obj, fallback).toLowerCase();
             }
+            function escapeHtml(str){
+              return (str ?? '').toString().replace(/[&<>"']/g, (m) => (
+                m === '&' ? '&amp;' :
+                m === '<' ? '&lt;' :
+                m === '>' ? '&gt;' :
+                m === '"' ? '&quot;' : '&#39;'
+              ));
+            }
+            function isOpaqueId(str){
+              const s = (str ?? '').toString().trim();
+              if(!s || s.length < 12) return false;
+              if(/\s/.test(s)) return false;
+              if(!/^[A-Za-z0-9_-]+$/.test(s)) return false;
+              return /[A-Za-z]/.test(s) && /\d/.test(s);
+            }
+            function sanitizeLabel(label, fallbackLabel){
+              const s = (label ?? '').toString().trim();
+              if(!s) return fallbackLabel;
+              if(isOpaqueId(s)) return fallbackLabel;
+              return s;
+            }
             function getLatLng(obj){
               const lat = obj?.lat ?? obj?.latitude ?? obj?.coords?.lat;
               const lng = obj?.lng ?? obj?.longitude ?? obj?.coords?.lng;
               return (lat!=null && lng!=null) ? {lat: parseFloat(lat), lng: parseFloat(lng)} : null;
+            }
+            function dedupeLatLng(points){
+              const out = [];
+              const seen = new Set();
+              (points || []).forEach(p => {
+                const lat = Number(p?.lat);
+                const lng = Number(p?.lng);
+                if(!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+                const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+                if(seen.has(key)) return;
+                seen.add(key);
+                out.push(p);
+              });
+              return out;
             }
             function readLevel(g){
               let lv = g?.level ?? g?.garbageLevel ?? g?.severity ?? g?.status;
@@ -356,7 +471,18 @@
                 firebaseFirestore.getDocs(dRef)
               ]);
               const dropMap = new Map();
-              dSnap.forEach(doc=>{ const d=doc.data(); const key = normalizeName(d, doc.id); if(key) dropMap.set(key, d); dropMap.set(doc.id.toLowerCase(), d); });
+              const dropList = [];
+              dSnap.forEach(doc=>{
+                const d = doc.data() || {};
+                const ll = getLatLng(d);
+                const withId = { ...d, id: doc.id };
+                const key = normalizeName(withId, doc.id);
+                if(key) dropMap.set(key, withId);
+                dropMap.set(doc.id.toLowerCase(), withId);
+                if(ll && Number.isFinite(ll.lat) && Number.isFinite(ll.lng)){
+                  dropList.push({ id: doc.id, name: sanitizeLabel(displayName(withId, doc.id), doc.id), lat: ll.lat, lng: ll.lng });
+                }
+              });
               const items=[];
               gSnap.forEach(doc=>{
                 const g=doc.data();
@@ -364,8 +490,24 @@
                 if(level==null) return;
                 const gLL = getLatLng(g);
                 if(gLL){
-                  const name = g.locationName || g.name || doc.id;
-                  items.push({ name, lat:gLL.lat, lng:gLL.lng, level });
+                  const withId = { ...g, id: doc.id };
+                  let name = displayName(withId, '');
+                  if(!name || isOpaqueId(name)){
+                    const key = normalizeName(withId, doc.id);
+                    const direct = dropMap.get(doc.id.toLowerCase()) || (key ? dropMap.get(key) : null);
+                    if(direct) name = displayName(direct, '');
+                  }
+                  if(!name || isOpaqueId(name)){
+                    let best = null;
+                    let bd = Infinity;
+                    for(let i=0;i<dropList.length;i++){
+                      const d = dropList[i];
+                      const dist = haversineKm({lat:gLL.lat,lng:gLL.lng},{lat:d.lat,lng:d.lng});
+                      if(dist < bd){ bd = dist; best = d; }
+                    }
+                    if(best && bd <= 0.2) name = best.name;
+                  }
+                  items.push({ name: sanitizeLabel(name, 'Drop-off'), lat:gLL.lat, lng:gLL.lng, level });
                   return;
                 }
                 const key = normalizeName(g, doc.id);
@@ -375,10 +517,17 @@
                   if(dLL){ items.push({ name: d.name||key, lat:dLL.lat, lng:dLL.lng, level }); }
                 }
               });
-              return items.filter(i=>Number.isFinite(i.lat) && Number.isFinite(i.lng));
+              return dedupeLatLng(items.filter(i=>Number.isFinite(i.lat) && Number.isFinite(i.lng)));
             }
 
             function haversineKm(a,b){ const R=6371; const dLat=(b.lat-a.lat)*Math.PI/180; const dLng=(b.lng-a.lng)*Math.PI/180; const s1=Math.sin(dLat/2), s2=Math.sin(dLng/2); const q=s1*s1 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*s2*s2; const c=2*Math.atan2(Math.sqrt(q),Math.sqrt(1-q)); return R*c; }
+            const CATMON_CENTER = { lat: 14.6591, lng: 120.9569 };
+            const CATMON_RADIUS_KM = 5;
+            function withinCatmonLatLng(lat, lng){
+              const a = { lat: Number(lat), lng: Number(lng) };
+              if(!Number.isFinite(a.lat) || !Number.isFinite(a.lng)) return false;
+              return haversineKm(a, CATMON_CENTER) <= CATMON_RADIUS_KM;
+            }
             function greedyNearest(points){ if(points.length<=1) return points.slice(); const unvisited=points.slice(); const route=[unvisited.shift()]; while(unvisited.length){ let bi=0,bd=Infinity; for(let i=0;i<unvisited.length;i++){ const d=haversineKm(route[route.length-1],unvisited[i]); if(d<bd){bd=d;bi=i;} } route.push(unvisited.splice(bi,1)[0]); } return route; }
 
             function twoOpt(route){
@@ -423,6 +572,29 @@
 
             let optMap, optPoly;
             let optMarkers = [];
+            let optRenderSeq = 0;
+            const optGeocodeCache = new Map();
+            let optGeocoder = null;
+            function ensureGeocoder(){
+              if(optGeocoder) return optGeocoder;
+              optGeocoder = new google.maps.Geocoder();
+              return optGeocoder;
+            }
+            function geoKey(lat,lng){
+              return `${Number(lat).toFixed(5)},${Number(lng).toFixed(5)}`;
+            }
+            function reverseGeocode(lat,lng){
+              const key = geoKey(lat,lng);
+              if(optGeocodeCache.has(key)) return Promise.resolve(optGeocodeCache.get(key));
+              const geocoder = ensureGeocoder();
+              return new Promise((resolve) => {
+                geocoder.geocode({ location: { lat: Number(lat), lng: Number(lng) } }, (results, status) => {
+                  const addr = (status === 'OK' && results && results[0] && results[0].formatted_address) ? results[0].formatted_address : '';
+                  optGeocodeCache.set(key, addr);
+                  resolve(addr);
+                });
+              });
+            }
             const CATMON_URL = 'https://maps.app.goo.gl/cBs6SBAjcMHB8P2W8';
             function tryParseLatLngFromUrl(u){
               try{
@@ -478,13 +650,54 @@
                 anchor: new google.maps.Point(14, 14),
               };
             }
+            function computeDisplayPositions(points){
+              const keyOf = (p) => `${Number(p.lat).toFixed(4)},${Number(p.lng).toFixed(4)}`;
+              const groups = new Map();
+              points.forEach((p, idx) => {
+                const k = keyOf(p);
+                if(!groups.has(k)) groups.set(k, []);
+                groups.get(k).push(idx);
+              });
+              const out = points.map(p => ({ lat: Number(p.lat), lng: Number(p.lng) }));
+              groups.forEach((idxs) => {
+                if(idxs.length <= 1) return;
+                const base = out[idxs[0]];
+                const baseLat = Number(base.lat);
+                const baseLng = Number(base.lng);
+                const latRad = baseLat * Math.PI / 180;
+                const cosLat = Math.cos(latRad) || 1;
+                const radius = 0.00012;
+                for(let j=0;j<idxs.length;j++){
+                  const angle = (2 * Math.PI * j) / idxs.length;
+                  const dLat = radius * Math.cos(angle);
+                  const dLng = (radius * Math.sin(angle)) / cosLat;
+                  out[idxs[j]] = { lat: baseLat + dLat, lng: baseLng + dLng };
+                }
+              });
+              return out;
+            }
             function renderOpt(points){
+              const seq = ++optRenderSeq;
               optListEl.innerHTML = points.map((p,i)=>{
-                const nm = displayName(p, 'Point') || 'Point';
-                return `<div>${i+1}. ${nm} — (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})</div>`;
+                const raw = displayName(p, '');
+                const label = sanitizeLabel(raw, 'Drop-off');
+                const lvl = (p.level||'').toString().toLowerCase();
+                const lvlClass = lvl.includes('high') ? 'high' : (lvl.includes('med') ? 'medium' : (lvl.includes('low') ? 'low' : ''));
+                const coords = `${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}`;
+                const tag = lvlClass ? `<span class="opt-tag ${lvlClass}">${escapeHtml(lvlClass)}</span>` : '';
+                return `
+                  <div class="opt-item">
+                    <div class="opt-num">${i+1}</div>
+                    <div style="min-width:0">
+                      <div class="opt-name" id="optName-${seq}-${i}">${escapeHtml(label)}</div>
+                      <div class="opt-sub"><span>${coords}</span>${tag}</div>
+                    </div>
+                  </div>
+                `;
               }).join('');
               const map2 = ensureOptMap();
               const path = points.map(p=>({lat:p.lat,lng:p.lng}));
+              const displayPos = computeDisplayPositions(points);
               // clear previous
               if(optPoly){optPoly.setMap(null);}
               clearOptMarkers();
@@ -494,8 +707,9 @@
               optPoly.setMap(map2);
               // numbered markers
               points.forEach((p, idx)=>{
+                const mp = displayPos[idx] || { lat: p.lat, lng: p.lng };
                 const m = new google.maps.Marker({
-                  position: {lat:p.lat, lng:p.lng},
+                  position: {lat: mp.lat, lng: mp.lng},
                   map: map2,
                   icon: numberIcon(idx+1),
                   title: `${idx+1}. ${displayName(p,'Point')||'Point'}`
@@ -503,6 +717,22 @@
                 optMarkers.push(m);
               });
               const b = new google.maps.LatLngBounds(); path.forEach(ll=>b.extend(ll)); map2.fitBounds(b);
+              (async ()=>{
+                for(let i=0;i<points.length;i++){
+                  if(seq !== optRenderSeq) return;
+                  const p = points[i];
+                  const raw = displayName(p, '');
+                  if(raw && !isOpaqueId(raw)) continue;
+                  const el = document.getElementById(`optName-${seq}-${i}`);
+                  if(!el) continue;
+                  const addr = await reverseGeocode(p.lat, p.lng);
+                  if(seq !== optRenderSeq) return;
+                  if(addr){
+                    el.textContent = addr;
+                    if(optMarkers[i]) optMarkers[i].setTitle(`${i+1}. ${addr}`);
+                  }
+                }
+              })();
             }
 
             function getDepotLatLng(points){
@@ -557,9 +787,11 @@
                 optPoly = new google.maps.Polyline({path: polylinePath, geodesic:true, strokeColor:'#ff3838', strokeOpacity:1.0, strokeWeight:4});
                 optPoly.setMap(map2);
                 const b = new google.maps.LatLngBounds(); polylinePath.forEach(ll=>b.extend(new google.maps.LatLng(ll.lat,ll.lng))); map2.fitBounds(b);
+                const displayPos = computeDisplayPositions(points);
                 points.forEach((p, idx)=>{
+                  const mp = displayPos[idx] || { lat: p.lat, lng: p.lng };
                   const m = new google.maps.Marker({
-                    position: {lat:p.lat, lng:p.lng},
+                    position: {lat: mp.lat, lng: mp.lng},
                     map: map2,
                     icon: numberIcon(idx+1),
                     title: `${idx+1}. ${displayName(p,'Point')||'Point'}`,
@@ -580,39 +812,48 @@
 
             async function fetchDropoffsOnly(){
               try{
-                const db = firebase.firestore ? firebase.firestore() : (window.firestore || null);
-                if(!db) return [];
-                const snap = await db.collection('dropofflocation').get();
+                const snap = await firebaseFirestore.getDocs(firebaseFirestore.collection(db,'dropofflocation'));
                 const pts = [];
                 snap.forEach(doc=>{
                   const d = doc.data()||{};
                   const ll = getLatLng(d);
                   if(!ll) return;
+                  const withId = { ...d, id: doc.id };
                   pts.push({
                     id: doc.id,
-                    name: displayName(d, doc.id),
+                    name: sanitizeLabel(displayName(withId, doc.id), 'Drop-off'),
                     lat: ll.lat,
                     lng: ll.lng,
                     area: readArea(d)
                   });
                 });
-                return pts;
+                return dedupeLatLng(pts.filter(p => withinCatmonLatLng(p.lat, p.lng)));
               }catch(e){ console.warn('fetchDropoffsOnly error', e); return []; }
             }
 
-            async function fetchGarbageLevels(){
+            async function fetchGarbageLevels(dropoffs){
               try{
-                const db = firebase.firestore ? firebase.firestore() : (window.firestore || null);
-                if(!db) return [];
-                const snap = await db.collection('garbagelevel').get();
+                const snap = await firebaseFirestore.getDocs(firebaseFirestore.collection(db,'garbagelevel'));
                 const list = [];
                 snap.forEach(doc=>{
                   const d = doc.data()||{};
                   const ll = getLatLng(d);
                   const lvl = readLevel(d);
+                  const withId = { ...d, id: doc.id };
+                  let name = displayName(withId, doc.id);
+                  if(ll && (!name || isOpaqueId(name)) && Array.isArray(dropoffs) && dropoffs.length){
+                    let best = null;
+                    let bd = Infinity;
+                    for(let i=0;i<dropoffs.length;i++){
+                      const x = dropoffs[i];
+                      const dist = haversineKm({lat:ll.lat,lng:ll.lng},{lat:x.lat,lng:x.lng});
+                      if(dist < bd){ bd = dist; best = x; }
+                    }
+                    if(best && bd <= 0.2) name = best.name;
+                  }
                   list.push({
                     id: doc.id,
-                    name: displayName(d, doc.id),
+                    name: sanitizeLabel(name, 'Drop-off'),
                     lat: ll?.lat,
                     lng: ll?.lng,
                     level: lvl,
@@ -667,7 +908,7 @@
               // Support both garbage-level autos and drop-off area autos
               if(level.startsWith('auto-dropoffs-')){
                 const pts = await fetchDropoffsOnly();
-                const levels = await fetchGarbageLevels();
+                const levels = await fetchGarbageLevels(pts);
                 let filtered = attachLevelsToDropoffs(pts, levels);
                 if(level.startsWith('auto-dropoffs-area:')){
                   const area = decodeURIComponent(level.split(':')[1]||'').toLowerCase();
@@ -676,6 +917,7 @@
                 // apply min level filter
                 const minRank = minRankFromSel();
                 if(minRank>0){ filtered = filtered.filter(p=> (p.levelRank||0) >= minRank); }
+                filtered = filtered.filter(p => withinCatmonLatLng(p.lat, p.lng));
                 if(!filtered.length){ optListEl.innerHTML = '<div class="muted">No drop-offs match the selected area and level.</div>'; optTotalEl.textContent='0.00 km total'; if(optPoly){optPoly.setMap(null);} return; }
                 // prioritize higher levels first before distance ordering
                 filtered.sort((a,b)=> (b.levelRank||0) - (a.levelRank||0));
@@ -693,8 +935,8 @@
                 if(target==='high') return lv==='high' || lv.includes('high') || lv.includes('extreme');
                 if(target==='low') return lv==='low' || lv.includes('low');
                 return lv.includes(target);
-              });
-              if(!choices.length){ optListEl.innerHTML = '<div class="muted">No matching drop-offs.</div>'; optTotalEl.textContent='0.00 km total'; if(optPoly){optPoly.setMap(null);} return; }
+              }).filter(p => withinCatmonLatLng(p.lat, p.lng));
+              if(!choices.length){ optListEl.innerHTML = '<div class="muted">No matching drop-offs near Catmon.</div>'; optTotalEl.textContent='0.00 km total'; if(optPoly){optPoly.setMap(null);} return; }
               let ordered = greedyNearest(choices);
               ordered = twoOpt(ordered);
               renderOpt(ordered);
@@ -705,13 +947,21 @@
               const res = await fetch(`/api/routes/${id}/optimize/`);
               if(!res.ok){ optListEl.innerHTML = '<div class="muted">Failed to optimize via API.</div>'; optTotalEl.textContent='0.00 km total'; return; }
               const data = await res.json();
-              const pts = (data.suggested_points||[])
+              try{
+                const iso = data?.factors?.optimization_date || fmtIsoDate();
+                const docId = `${id}_${ymdCompact(iso) || ymdCompact(fmtIsoDate())}`;
+                setOptModeMeta(`Saved/updated in Firestore as route_suggestion/${docId}.`);
+              }catch(e){}
+              const pts = dedupeLatLng((data.suggested_points||[])
                 .map(p=>({
-                  name: displayName(p, p.id),
+                  name: sanitizeLabel(displayName(p, p.id), 'Drop-off'),
                   lat: p.lat || p.latitude,
-                  lng: p.lng || p.longitude
+                  lng: p.lng || p.longitude,
+                  level: p.level || p.garbageLevel || p.garbage_level
                 }))
-                .filter(p=>p.lat&&p.lng);
+                .filter(p=>p.lat&&p.lng)
+                .filter(p=> withinCatmonLatLng(p.lat, p.lng)));
+              if(!pts.length){ optListEl.innerHTML = '<div class="muted">No route points near Catmon.</div>'; optTotalEl.textContent='0.00 km total'; if(optPoly){optPoly.setMap(null);} return; }
               let ordered = pts;
               ordered = twoOpt(ordered);
               renderOpt(ordered);
@@ -723,12 +973,16 @@
 
             document.getElementById('optimizeBtn').addEventListener('click', ()=>{
               const val = optRouteSel.value; if(!val){ optListEl.innerHTML = '<div class="muted">Please select a route option.</div>'; return; }
+              setOptModeMeta('');
               if(val.startsWith('auto-')) optimizeAuto(val); else optimizeBackend(val);
             });
+            optRouteSel.addEventListener('change', ()=> setOptModeMeta(''));
             populateRoutes();
             // Ensure mini map is initialized and refine both maps to precise Catmon center
             ensureOptMap();
             geocodeCatmonAndCenter(map);
+            setOptModeMeta('');
+            }
         } catch (err) {
             console.error('Initialization error:', err);
             statusEl.textContent = 'Failed to initialize Firebase.';

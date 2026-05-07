@@ -20,10 +20,14 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--days", type=int, default=180)
         parser.add_argument("--route_name", type=str, default="Main Route")
+        parser.add_argument("--only_dropoffs", action="store_true")
+        parser.add_argument("--dropoff_collection", type=str, default="dropofflocation")
 
     def handle(self, *args, **opts):
         days = int(opts.get("days") or 180)
         route_name = opts.get("route_name") or "Main Route"
+        only_dropoffs = bool(opts.get("only_dropoffs"))
+        dropoff_collection = str(opts.get("dropoff_collection") or "dropofflocation").strip() or "dropofflocation"
 
         target_names = [
             "Sitio 6 basketball court",
@@ -33,8 +37,61 @@ class Command(BaseCommand):
             "Justice",
             "Dumpsite",
         ]
-        base_lat = 14.6620
-        base_lng = 120.9490
+        catmon_center_lat = 14.6591
+        catmon_center_lng = 120.9569
+        pinned = [
+            ("Sitio 6 basketball court", catmon_center_lat + 0.0010, catmon_center_lng + 0.0007),
+            ("Dumpsite", catmon_center_lat - 0.0012, catmon_center_lng - 0.0006),
+            ("Gulayan", catmon_center_lat + 0.0004, catmon_center_lng - 0.0010),
+            ("SM Hoa", catmon_center_lat - 0.0003, catmon_center_lng + 0.0011),
+            ("Lucas Compound", catmon_center_lat + 0.0014, catmon_center_lng - 0.0002),
+            ("Justice", catmon_center_lat - 0.0010, catmon_center_lng + 0.0003),
+        ]
+
+        if only_dropoffs:
+            db = None
+            try:
+                from gtrack.firebase import firebase_manager as _fm
+                try:
+                    _fm.ensure_initialized()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+            try:
+                from gtrack.firebase_sync import _get_firestore_client as _get_db
+                db = _get_db()
+            except Exception:
+                db = None
+
+            if not db:
+                self.stdout.write(self.style.ERROR("Firestore client not available. Set FIREBASE_CREDENTIALS_PATH / GOOGLE_APPLICATION_CREDENTIALS."))
+                return
+
+            try:
+                batch = db.batch()
+                col = db.collection(dropoff_collection)
+                for name, lat, lng in pinned:
+                    doc_id = str(name).strip().lower().replace(" ", "_")
+                    batch.set(
+                        col.document(doc_id),
+                        {
+                            "name": name,
+                            "location": name,
+                            "latitude": float(lat),
+                            "longitude": float(lng),
+                            "barangay": "Catmon",
+                            "city": "Malabon City",
+                            "address": f"{name}, Catmon, Malabon City",
+                        },
+                        merge=True,
+                    )
+                batch.commit()
+                self.stdout.write(self.style.SUCCESS(f"Firestore drop-offs seeded: {len(pinned)} docs into {dropoff_collection}"))
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f"Failed to seed Firestore drop-offs: {e}"))
+            return
 
         with transaction.atomic():
             RoutePoint.objects.filter(route__name__icontains="Catmon Daily Route").delete()
@@ -45,8 +102,11 @@ class Command(BaseCommand):
 
             locations = []
             for i, name in enumerate(target_names):
-                lat = base_lat + (i * 0.0010)
-                lng = base_lng + ((i % 3) * 0.0013)
+                try:
+                    lat, lng = next((a, b) for (n, a, b) in pinned if n.strip().lower() == name.strip().lower())
+                except Exception:
+                    lat = catmon_center_lat + (i * 0.0010)
+                    lng = catmon_center_lng + ((i % 3) * 0.0010)
                 loc = Location.objects.filter(name__iexact=name).first()
                 if loc:
                     loc.name = name
@@ -167,9 +227,12 @@ class Command(BaseCommand):
                         doc,
                         {
                             "name": loc.name,
+                            "location": loc.name,
                             "latitude": loc.latitude,
                             "longitude": loc.longitude,
                             "address": loc.address,
+                            "barangay": "Catmon",
+                            "city": "Malabon City",
                         },
                         merge=True,
                     )

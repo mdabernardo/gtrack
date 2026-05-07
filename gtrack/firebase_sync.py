@@ -245,6 +245,7 @@ def sync_reroute_to_firestore(
 
         payload: Dict[str, Any] = {
             "id": doc_id,
+            "approved": True,
             "route_id": route_id,
             "routeId": str(route_id),
             "route_name": route_name,
@@ -488,6 +489,11 @@ def fetch_road_reports(only_new: bool = False) -> list:
             data = d.to_dict() if hasattr(d, "to_dict") else getattr(d, "_data", {}) or {}
             if not isinstance(data, dict):
                 continue
+            loc = data.get("location")
+            if not loc:
+                loc = data.get("locationName") or data.get("location_name")
+                if loc:
+                    data["location"] = loc
             status = data.get('status', 'new')
             if only_new and status == 'processed':
                 continue

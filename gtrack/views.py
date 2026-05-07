@@ -934,7 +934,9 @@ def approve_reroute(request):
     report_collection = data.get('report_collection') or data.get('reportCollection') or data.get('road_report_collection')
     iso_date = data.get('date') or data.get('reroute_date') or data.get('rerouteDate')
     handoff = str(data.get('handoff') or data.get('truck_full') or '').strip().lower() in ('1', 'true', 'yes')
-    full_collector_id = str(data.get('full_collector_id') or data.get('collector_id') or '1').strip() or '1'
+    full_collector_id = str(data.get('full_collector_id') or data.get('collector_id') or '').strip()
+    if handoff and full_collector_id not in ("1", "2"):
+        full_collector_id = "1"
 
     title = f"Route Rerouted: {route_name}"
     body = f"New route approved due to road report near {location_name}. Please follow the updated path."
@@ -1018,17 +1020,72 @@ def approve_reroute(request):
             reroute_id = f"{rr.get('__collection__') or 'road_report'}_{rr.get('id') or report_id}"
             reroute_id = str(reroute_id).replace("/", "_")
 
-            reroute_written = sync_reroute_to_firestore(
-                reroute_id=reroute_id,
-                route_id=route_id_int,
-                route_name=route_name,
-                reroute_date=reroute_date,
-                suggested_points=suggested_points,
-                factors=factors,
-                generated_at=generated_at,
-                road_report=rr,
-                trace=trace if isinstance(trace, dict) else None,
-            )
+            reroute_written = False
+            if firestore:
+                try:
+                    db = firestore.client()
+
+                    reroute_payload = {
+                        "approved": True,
+                        "source": "approve_reroute",
+                        "reportId": str(report_id),
+                        "reportCollection": str(rr.get("__collection__") or report_collection or ""),
+                        "location_name": str(rr.get("location") or location_name or ""),
+                        "locationName": str(rr.get("location") or location_name or ""),
+                        "id": str(reroute_id),
+                        "route_id": int(route_id_int),
+                        "routeId": str(route_id_int),
+                        "route_name": str(route_name),
+                        "routeName": str(route_name),
+                        "date": reroute_date.strftime("%Y-%m-%d"),
+                        "suggested_points": list(suggested_points),
+                        "suggestedPoints": list(suggested_points),
+                        "factors": dict(factors or {}),
+                        "generated_at": generated_at,
+                        "generatedAt": generated_at,
+                        "status": "approved",
+                        "updated_at": firestore.SERVER_TIMESTAMP,
+                        "updatedAt": firestore.SERVER_TIMESTAMP,
+                        "road_report": dict(rr),
+                    }
+                    if isinstance(trace, dict):
+                        reroute_payload["trace"] = trace
+
+                    db.collection("reroutr").document(str(reroute_id)).set(reroute_payload, merge=True)
+                    reroute_written = True
+
+                    update_payload = {
+                        "reroute": {
+                            "rerouteId": str(reroute_id),
+                            "route_id": int(route_id_int),
+                            "routeId": str(route_id_int),
+                            "route_name": str(route_name),
+                            "routeName": str(route_name),
+                            "date": reroute_date.strftime("%Y-%m-%d"),
+                            "suggested_points": list(suggested_points),
+                            "suggestedPoints": list(suggested_points),
+                            "factors": dict(factors or {}),
+                            "generated_at": generated_at,
+                            "generatedAt": generated_at,
+                            "road_report": dict(rr),
+                        },
+                        "status": "processed",
+                        "processed_at": firestore.SERVER_TIMESTAMP,
+                        "rerouteId": str(reroute_id),
+                    }
+                    if isinstance(trace, dict):
+                        update_payload["reroute"]["trace"] = trace
+
+                    targets = [str(rr.get("__collection__") or report_collection)] if (rr.get("__collection__") or report_collection) else ["road_reports", "road_report"]
+                    for col_name in targets:
+                        if not col_name:
+                            continue
+                        try:
+                            db.collection(col_name).document(str(report_id)).set(update_payload, merge=True)
+                        except Exception:
+                            continue
+                except Exception:
+                    reroute_written = False
 
             if handoff and firestore:
                 try:
@@ -2029,6 +2086,24 @@ def sync_predictions_to_firebase(request):
 def generate_verification_notifications(request):
     """Create admin notifications for residents pending verification."""
     pending_count = 0
+    def _norm_status(v, doc: dict):
+        s = (v or "").strip()
+        low = s.lower()
+        if not low:
+            if doc.get("isVerified") is True or doc.get("is_verified") is True:
+                return "Verified"
+            return "Pending"
+        if low in ("pending", "unverified", "not verified", "not_verified"):
+            return "Pending"
+        if low in ("verified",):
+            return "Verified"
+        if low in ("rejected",):
+            return "Rejected"
+        if doc.get("isVerified") is True or doc.get("is_verified") is True:
+            return "Verified"
+        if doc.get("isVerified") is False or doc.get("is_verified") is False:
+            return "Pending"
+        return s
     try:
         if firestore and getattr(firebase_admin, "_apps", None):
             db = firestore.client()
@@ -2044,12 +2119,7 @@ def generate_verification_notifications(request):
                         data = doc.to_dict() if hasattr(doc, "to_dict") else {}
                         if not isinstance(data, dict):
                             continue
-                        st = data.get("verificationStatus") or data.get("status")
-                        if not st:
-                            if data.get("isVerified") is True or data.get("is_verified") is True:
-                                st = "Verified"
-                            else:
-                                st = "Pending"
+                        st = _norm_status(data.get("verificationStatus") or data.get("status"), data)
                         if str(st).lower() == "pending":
                             pending_count += 1
                     break
@@ -2061,7 +2131,13 @@ def generate_verification_notifications(request):
                     data = doc.to_dict() if hasattr(doc, "to_dict") else {}
                     if not isinstance(data, dict):
                         continue
-                    st = data.get("verificationStatus") or data.get("status") or ((data.get("data") or {}).get("verificationStatus")) or ((data.get("data") or {}).get("status")) or "Pending"
+                    st = _norm_status(
+                        data.get("verificationStatus")
+                        or data.get("status")
+                        or ((data.get("data") or {}).get("verificationStatus"))
+                        or ((data.get("data") or {}).get("status")),
+                        (data.get("resident") or (data.get("data") or {}).get("resident") or data),
+                    )
                     if str(st).lower() == "pending":
                         pending_count += 1
         else:
@@ -2167,6 +2243,76 @@ def resident_verification_requests(request):
 
     status_filter = (request.GET.get("status") or "Pending").strip()
 
+    def _norm_verification_status(raw, doc: dict):
+        v = (raw or "").strip()
+        low = v.lower()
+        if not low:
+            if doc.get("isVerified") is True or doc.get("is_verified") is True:
+                return "Verified"
+            return "Pending"
+        if low in ("pending", "unverified", "not verified", "not_verified", "un-verfied", "unverify", "unverified "):
+            return "Pending"
+        if low in ("verified", "approved", "accept", "accepted"):
+            return "Verified"
+        if low in ("rejected", "reject", "denied", "declined"):
+            return "Rejected"
+        if doc.get("isVerified") is True or doc.get("is_verified") is True:
+            return "Verified"
+        if doc.get("isVerified") is False or doc.get("is_verified") is False:
+            return "Pending"
+        return v
+
+    def _json_safe(value):
+        import datetime as _dt
+        from decimal import Decimal as _Decimal
+
+        if value is None:
+            return None
+        if isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, _Decimal):
+            try:
+                return float(value)
+            except Exception:
+                return str(value)
+        if isinstance(value, (_dt.datetime, _dt.date)):
+            try:
+                return value.isoformat()
+            except Exception:
+                return str(value)
+        if isinstance(value, dict):
+            out = {}
+            for k, v in value.items():
+                try:
+                    key = str(k)
+                except Exception:
+                    continue
+                out[key] = _json_safe(v)
+            return out
+        if isinstance(value, (list, tuple, set)):
+            return [_json_safe(v) for v in list(value)]
+
+        lat = getattr(value, "latitude", None)
+        lng = getattr(value, "longitude", None)
+        if lat is not None and lng is not None:
+            try:
+                return {"lat": float(lat), "lng": float(lng)}
+            except Exception:
+                return {"lat": lat, "lng": lng}
+
+        path = getattr(value, "path", None)
+        doc_id = getattr(value, "id", None)
+        if path is not None and doc_id is not None:
+            try:
+                return {"path": str(path), "id": str(doc_id)}
+            except Exception:
+                return str(value)
+
+        try:
+            return str(value)
+        except Exception:
+            return None
+
     if not getattr(firebase_admin, "_apps", None):
         return Response({'status': 'error', 'message': 'Firebase Admin SDK not initialized'}, status=500)
 
@@ -2176,7 +2322,34 @@ def resident_verification_requests(request):
         resident_collection = None
         for col_name in ("residents",):
             try:
-                docs = db.collection(col_name).get()
+                docs = []
+
+                desired = (status_filter or "Pending").strip().lower()
+                if desired != "all":
+                    if desired == "pending":
+                        want = ["Pending", "Unverified"]
+                    elif desired == "verified":
+                        want = ["Verified"]
+                    elif desired == "rejected":
+                        want = ["Rejected"]
+                    else:
+                        want = [status_filter]
+
+                    results_by_doc_id = {}
+                    for field in ("verificationStatus", "status", "verification_status"):
+                        try:
+                            qdocs = db.collection(col_name).where(field, "in", want).get()
+                        except Exception:
+                            qdocs = []
+                        for d in qdocs:
+                            try:
+                                results_by_doc_id[d.id] = d
+                            except Exception:
+                                pass
+                    docs = list(results_by_doc_id.values())
+
+                if not docs:
+                    docs = db.collection(col_name).get()
             except Exception:
                 docs = []
             if docs:
@@ -2191,12 +2364,10 @@ def resident_verification_requests(request):
                 if not isinstance(data, dict):
                     continue
 
-                status_value = data.get("verificationStatus") or data.get("status")
-                if not status_value:
-                    if data.get("isVerified") is True or data.get("is_verified") is True:
-                        status_value = "Verified"
-                    else:
-                        status_value = "Pending"
+                status_value = _norm_verification_status(
+                    data.get("verificationStatus") or data.get("verification_status") or data.get("status"),
+                    data,
+                )
 
                 if status_filter.lower() != "all" and str(status_value).lower() != status_filter.lower():
                     continue
@@ -2217,7 +2388,7 @@ def resident_verification_requests(request):
                     "status": status_value,
                     "verificationStatus": status_value,
                     "rejectionReason": data.get("rejectionReason") or data.get("rejectReason") or data.get("reason"),
-                    "resident": dict(data),
+                    "resident": _json_safe(data),
                     "createdAt": created_at,
                     "sourceCollection": resident_collection,
                 })
@@ -2272,10 +2443,9 @@ def resident_verification_requests(request):
                 if request_id in results_by_id:
                     continue
 
-                status_value = str(
-                    legacy_data.get("verificationStatus")
-                    or legacy_data.get("status")
-                    or "Pending"
+                status_value = _norm_verification_status(
+                    legacy_data.get("verificationStatus") or legacy_data.get("status"),
+                    legacy_data,
                 )
 
                 recipient_uid = (
@@ -2323,12 +2493,12 @@ def resident_verification_requests(request):
             if not isinstance(data, dict):
                 continue
 
-            status_value = (
+            status_value = _norm_verification_status(
                 data.get("verificationStatus")
                 or data.get("status")
                 or ((data.get("data") or {}).get("verificationStatus"))
-                or ((data.get("data") or {}).get("status"))
-                or "Pending"
+                or ((data.get("data") or {}).get("status")),
+                (data.get("resident") or (data.get("data") or {}).get("resident") or data),
             )
 
             if status_filter.lower() != "all" and str(status_value).lower() != status_filter.lower():
@@ -2352,7 +2522,7 @@ def resident_verification_requests(request):
                 "status": status_value,
                 "verificationStatus": status_value,
                 "rejectionReason": data.get("rejectionReason") or (data.get("data") or {}).get("rejectionReason"),
-                "resident": resident,
+                "resident": _json_safe(resident),
                 "createdAt": created_at,
             })
 

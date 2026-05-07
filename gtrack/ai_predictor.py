@@ -304,8 +304,7 @@ class GarbageRoutePredictor:
             reports = road_reports or []
         report_map = {}
         for r in reports:
-            # Assume 'location' field contains the name
-            r_loc = str(r.get('location') or '').strip().lower()
+            r_loc = str(r.get('location') or r.get('locationName') or r.get('location_name') or '').strip().lower()
             if r_loc:
                 report_map[r_loc] = r
 

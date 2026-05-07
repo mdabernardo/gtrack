@@ -44,7 +44,7 @@
     <div class="gt-dd">
       <button type="button" class="gt-dd-btn {% if active_tab == 'resident_schedules' or active_tab == 'garbage_level' %}active{% endif %}" onclick="gtToggleMenu(event, 'gtResidentMenu')">Resident ▾</button>
       <div id="gtResidentMenu" class="gt-dd-menu">
-        <a href="{% url 'schedules' %}" class="{% if active_tab == 'resident_schedules' %}active{% endif %}">Resident Sched</a>
+        <a href="{% url 'schedules' %}" class="{% if active_tab == 'resident_schedules' %}active{% endif %}">Resident Schedules</a>
         <a href="{% url 'garbage_level' %}" class="{% if active_tab == 'garbage_level' %}active{% endif %}">Garbage Level</a>
       </div>
     </div>
@@ -53,8 +53,8 @@
       <button type="button" class="gt-dd-btn {% if active_tab == 'track_trucks' or active_tab == 'collector_schedules' or active_tab == 'collector_route_suggestions' %}active{% endif %}" onclick="gtToggleMenu(event, 'gtCollectorMenu')">Collector ▾</button>
       <div id="gtCollectorMenu" class="gt-dd-menu">
         <a href="{% url 'track_trucks' %}" class="{% if active_tab == 'track_trucks' %}active{% endif %}">Track Trucks</a>
-        <a href="{% url 'collector_schedules' %}" class="{% if active_tab == 'collector_schedules' %}active{% endif %}">Collector Sched</a>
-        <a href="{% url 'collector_route_suggestions' %}" class="{% if active_tab == 'collector_route_suggestions' %}active{% endif %}">Route Suggestion</a>
+        <a href="{% url 'collector_schedules' %}" class="{% if active_tab == 'collector_schedules' %}active{% endif %}">Collector Schedules</a>
+        <a href="{% url 'collector_route_suggestions' %}" class="{% if active_tab == 'collector_route_suggestions' %}active{% endif %}">Route Suggestions</a>
       </div>
     </div>
 
@@ -62,7 +62,7 @@
       <button type="button" class="gt-dd-btn {% if active_tab == 'notification' or active_tab == 'crud_management' or active_tab == 'resident_verification' or active_tab == 'driver_verification' %}active{% endif %}" onclick="gtToggleMenu(event, 'gtAdminMenu')">Admin ▾</button>
       <div id="gtAdminMenu" class="gt-dd-menu">
         <a href="{% url 'notification' %}" class="{% if active_tab == 'notification' %}active{% endif %}">Notifications</a>
-        <a href="{% url 'crud_management' %}" class="{% if active_tab == 'crud_management' %}active{% endif %}">Drop-off</a>
+        <a href="{% url 'crud_management' %}" class="{% if active_tab == 'crud_management' %}active{% endif %}">Drop-off Management</a>
         <a href="{% url 'resident_verification' %}" class="{% if active_tab == 'resident_verification' %}active{% endif %}">Resident Verification</a>
         <a href="{% url 'driver_verification' %}" class="{% if active_tab == 'driver_verification' %}active{% endif %}">Garbage Truck Verification</a>
       </div>
