@@ -2211,6 +2211,48 @@ def resident_verification_submit(request):
 
     request_id = f"RVREQ_{uuid.uuid4().hex[:16]}"
 
+    try:
+        db = firestore.client()
+        email = ""
+        try:
+            email = (resident.get("email") or decoded.get("email") or resident.get("gmail_email") or "").strip()
+        except Exception:
+            email = ""
+
+        doc_key = email or uid
+        doc_ref = db.collection("residents").document(str(doc_key))
+        existing = {}
+        try:
+            snap = doc_ref.get()
+            if getattr(snap, "exists", False):
+                existing = snap.to_dict() or {}
+        except Exception:
+            existing = {}
+
+        existing_status = str(existing.get("verificationStatus") or existing.get("status") or "").strip().lower()
+        already_verified = existing.get("isVerified") is True or existing.get("is_verified") is True or existing_status in ("verified", "approved", "accepted")
+
+        if not already_verified:
+            update = {
+                "uid": uid,
+                "verificationStatus": "Pending",
+                "status": "Pending",
+                "isVerified": False,
+                "is_verified": False,
+                "verificationRequestId": request_id,
+                "verificationRequestedAt": firestore.SERVER_TIMESTAMP,
+            }
+            if email:
+                update["email"] = email
+            if isinstance(resident, dict) and resident:
+                for k, v in resident.items():
+                    if k in ("verificationStatus", "status", "isVerified", "is_verified"):
+                        continue
+                    update[k] = v
+            doc_ref.set(update, merge=True)
+    except Exception:
+        pass
+
     create_firestore_notification(
         title="Resident Verification",
         body="A resident verification request was submitted.",

@@ -1,9 +1,18 @@
 Script started.
-Firebase Admin SDK initialized successfully.
 Syncing to Firestore...
 Sync success: True
-Checking document: 999_20260211
-Verified! Document found in 'reroutr'.
-Data keys: ['suggested_points', 'data_string', 'updated_at', 'route_id', 'route_name', 'date', 'generated_at', 'factors']
-Confirmed 'data_string' field exists.
+Checking document: 999_20260428
+Verification failed: Document not found in 'reroutr'
 Script finished.
+Found 0 test(s).
+System check identified some issues:
+
+WARNINGS:
+?: (staticfiles.W004) The directory 'C:\Users\admin\Downloads\gtrack-main (4)\static' in the STATICFILES_DIRS setting does not exist.
+
+System check identified 1 issue (0 silenced).
+
+----------------------------------------------------------------------
+Ran 0 tests in 0.000s
+
+NO TESTS RAN

@@ -1,7 +1,9 @@
 Calling check_road_reports...
-Response: {'status': 'processed', 'reports_count': 1, 'notifications_sent': 3, 'rerouted_routes': ['Test Route']}
-SUCCESS: Driver notification created: Road Alert: Test Location
-SUCCESS: Resident notification created: Road Alert: Test Location
-SUCCESS: Firestore 'collectors' collection queried for driver token
-Push notifications sent: 2
-SUCCESS: Push notification sent to driver token
+Response: {'status': 'forbidden'}
+FAILURE: No driver notification created
+FAILURE: No resident notification created
+FAILURE: Firestore collection query mismatch: expected call not found.
+Expected: document('driver1')
+Actual: not called.
+Push notifications sent: 0
+FAILURE: Push notification NOT sent to driver token

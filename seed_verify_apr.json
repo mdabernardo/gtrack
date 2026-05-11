@@ -1,0 +1,162 @@
+{
+  "sched": {
+    "12_20260414": {
+      "predicted_start": "06:00 AM",
+      "predicted_end": "10:00 PM",
+      "etas": [
+        {
+          "order": 1,
+          "times": [
+            "06:17 AM",
+            "03:17 PM",
+            "05:42 PM"
+          ],
+          "location_name": "Sitio 6 basketball court",
+          "eta": "06:17 AM",
+          "point_id": null
+        },
+        {
+          "order": 2,
+          "times": [
+            "06:46 AM",
+            "02:05 PM",
+            "09:47 PM"
+          ],
+          "location_name": "SM Hoa",
+          "eta": "06:46 AM",
+          "point_id": null
+        }
+      ]
+    },
+    "12_20260415": {
+      "predicted_start": "06:00 AM",
+      "predicted_end": "10:00 PM",
+      "etas": [
+        {
+          "order": 1,
+          "times": [
+            "06:04 AM",
+            "01:35 PM",
+            "07:39 PM"
+          ],
+          "location_name": "Sitio 6 basketball court",
+          "eta": "06:04 AM",
+          "point_id": null
+        },
+        {
+          "order": 2,
+          "times": [
+            "06:44 AM",
+            "02:18 PM",
+            "09:31 PM"
+          ],
+          "location_name": "Justice",
+          "eta": "06:44 AM",
+          "point_id": null
+        }
+      ]
+    }
+  },
+  "drop": {
+    "2026-04-14": [
+      {
+        "name": "Dumpsite",
+        "times": [
+          "09:29 AM",
+          "12:23 PM",
+          "06:37 PM"
+        ]
+      },
+      {
+        "name": "Gulayan",
+        "times": [
+          "08:23 AM",
+          "01:08 PM",
+          "07:36 PM"
+        ]
+      },
+      {
+        "name": "Justice",
+        "times": [
+          "07:53 AM",
+          "04:07 PM",
+          "08:32 PM"
+        ]
+      },
+      {
+        "name": "Lucas Compound",
+        "times": [
+          "10:00 AM",
+          "05:00 PM",
+          "08:57 PM"
+        ]
+      },
+      {
+        "name": "SM Hoa",
+        "times": [
+          "06:46 AM",
+          "02:05 PM",
+          "09:47 PM"
+        ]
+      },
+      {
+        "name": "Sitio 6 basketball court",
+        "times": [
+          "06:17 AM",
+          "03:17 PM",
+          "05:42 PM"
+        ]
+      }
+    ],
+    "2026-04-15": [
+      {
+        "name": "Dumpsite",
+        "times": [
+          "09:11 AM",
+          "12:28 PM",
+          "08:25 PM"
+        ]
+      },
+      {
+        "name": "Gulayan",
+        "times": [
+          "07:48 AM",
+          "04:21 PM",
+          "07:06 PM"
+        ]
+      },
+      {
+        "name": "Justice",
+        "times": [
+          "06:44 AM",
+          "02:18 PM",
+          "09:31 PM"
+        ]
+      },
+      {
+        "name": "Lucas Compound",
+        "times": [
+          "09:50 AM",
+          "04:59 PM",
+          "06:23 PM"
+        ]
+      },
+      {
+        "name": "SM Hoa",
+        "times": [
+          "08:15 AM",
+          "03:26 PM",
+          "10:00 PM"
+        ]
+      },
+      {
+        "name": "Sitio 6 basketball court",
+        "times": [
+          "06:04 AM",
+          "01:35 PM",
+          "07:39 PM"
+        ]
+      }
+    ]
+  }
+}

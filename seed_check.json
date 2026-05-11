@@ -1,0 +1,38 @@
+{
+  "12_20260129": {
+    "predicted_start": "06:00 AM",
+    "predicted_end": "10:00 PM",
+    "factors": {
+      "source": "seed",
+      "rounds": 3
+    },
+    "etas_len": 6
+  },
+  "12_20260130": {
+    "predicted_start": "06:00 AM",
+    "predicted_end": "10:00 PM",
+    "factors": {
+      "source": "seed",
+      "rounds": 3
+    },
+    "etas_len": 6
+  },
+  "12_20260131": {
+    "predicted_start": "06:00 AM",
+    "predicted_end": "10:00 PM",
+    "factors": {
+      "source": "seed",
+      "rounds": 3
+    },
+    "etas_len": 6
+  },
+  "13_20260130": {
+    "predicted_start": "06:00 AM",
+    "predicted_end": "10:00 PM",
+    "factors": {
+      "source": "seed",
+      "rounds": 3
+    },
+    "etas_len": 6
+  }
+}
