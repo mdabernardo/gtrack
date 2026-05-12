@@ -535,12 +535,13 @@ def login_view(request):
             messages.error(request, "Email and password are required.")
             return redirect('login')
 
+        fixed_emails = getattr(settings, 'ADMIN_FIXED_EMAILS', [])
+        if not isinstance(fixed_emails, (list, tuple, set)):
+            fixed_emails = [getattr(settings, 'ADMIN_FIXED_EMAIL', '')]
+        allowed_emails = {e.strip().lower() for e in fixed_emails if e}
+
         # Fixed admin override: allow direct login for configured admin Gmail(s)
         try:
-            fixed_emails = getattr(settings, 'ADMIN_FIXED_EMAILS', [])
-            if not isinstance(fixed_emails, (list, tuple, set)):
-                fixed_emails = [getattr(settings, 'ADMIN_FIXED_EMAIL', '')]
-            allowed_emails = {e.strip().lower() for e in fixed_emails if e}
             fixed_password = getattr(settings, 'ADMIN_FIXED_PASSWORD', '') or ''
             if (
                 email.strip().lower() in allowed_emails
@@ -637,6 +638,11 @@ def login_view(request):
                 username=uid,
                 defaults={"email": email_from_token or ""}
             )
+            if (email_from_token or "").strip().lower() in allowed_emails:
+                django_user.is_staff = True
+                django_user.is_superuser = True
+                django_user.set_unusable_password()
+                django_user.save(update_fields=["is_staff", "is_superuser", "password"])
             django_login(request, django_user, backend='django.contrib.auth.backends.ModelBackend')
             messages.success(request, f"Login successful!")
             # Respect 'next' parameter when present
@@ -1688,6 +1694,8 @@ def collector_route_suggestions_view(request):
 
 @login_required
 def notification_view(request):
+    if not getattr(request.user, "is_staff", False):
+        return redirect('dashboard')
     app_id = settings.FIREBASE_CLIENT_CONFIG.get('projectId', 'g-trackapp')
     firebase_config_json = json.dumps(settings.FIREBASE_CLIENT_CONFIG)
     context = {
@@ -2281,8 +2289,8 @@ def resident_verification_requests(request):
     if not (request.user and request.user.is_authenticated and request.user.is_staff):
         return Response({'status': 'forbidden'}, status=403)
 
-    if not firestore:
-        return Response({'status': 'error', 'message': 'Firestore not available'}, status=500)
+    if not firestore or not getattr(firebase_admin, "_apps", None):
+        return Response({'status': 'ok', 'count': 0, 'items': []})
 
     status_filter = (request.GET.get("status") or "Pending").strip()
 
@@ -2355,9 +2363,6 @@ def resident_verification_requests(request):
             return str(value)
         except Exception:
             return None
-
-    if not getattr(firebase_admin, "_apps", None):
-        return Response({'status': 'error', 'message': 'Firebase Admin SDK not initialized'}, status=500)
 
     try:
         db = firestore.client()
