@@ -541,10 +541,11 @@ def login_view(request):
             if not isinstance(fixed_emails, (list, tuple, set)):
                 fixed_emails = [getattr(settings, 'ADMIN_FIXED_EMAIL', '')]
             allowed_emails = {e.strip().lower() for e in fixed_emails if e}
+            fixed_password = getattr(settings, 'ADMIN_FIXED_PASSWORD', '') or ''
             if (
-                getattr(settings, 'ENABLE_ADMIN_FIXED_LOGIN', False)
                 and email.strip().lower() in allowed_emails
-                and password == getattr(settings, 'ADMIN_FIXED_PASSWORD', '')
+                and fixed_password
+                and password == fixed_password
             ):
                 admin_email = email.strip().lower()
                 try:
@@ -656,7 +657,7 @@ def login_view(request):
 
     context = {
         'firebase_config_json': json.dumps(settings.FIREBASE_CLIENT_CONFIG),
-        'admin_login_enabled': getattr(settings, 'ENABLE_ADMIN_FIXED_LOGIN', False),
+        'admin_login_enabled': bool(getattr(settings, 'ADMIN_FIXED_PASSWORD', '') or ''),
         'admin_allowed_emails': getattr(settings, 'ADMIN_FIXED_EMAILS', ()),
     }
     return render(request, 'login.html', context)
