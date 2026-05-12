@@ -53,6 +53,9 @@ render_host = os.getenv('RENDER_EXTERNAL_HOSTNAME')
 if render_host:
     ALLOWED_HOSTS.append(render_host)
 
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+
 # Admin login override configuration
 # For security, only enable in production when explicitly configured via environment variables.
 _enable_admin_fixed_login_raw = (os.getenv('ENABLE_ADMIN_FIXED_LOGIN') or '').strip().lower()
@@ -96,6 +99,8 @@ CSRF_TRUSTED_ORIGINS = [
     'http://0.0.0.0:8000',
     'http://127.0.0.1:8001',
 ]
+if render_host:
+    CSRF_TRUSTED_ORIGINS.append(f"https://{render_host}")
 
 if not DEBUG:
     SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'true').lower() in ('true', '1', 'yes')

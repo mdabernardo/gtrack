@@ -543,7 +543,7 @@ def login_view(request):
             allowed_emails = {e.strip().lower() for e in fixed_emails if e}
             fixed_password = getattr(settings, 'ADMIN_FIXED_PASSWORD', '') or ''
             if (
-                and email.strip().lower() in allowed_emails
+                email.strip().lower() in allowed_emails
                 and fixed_password
                 and password == fixed_password
             ):
@@ -575,7 +575,7 @@ def login_view(request):
                 django_user.set_unusable_password()
                 # Save changes (including password field)
                 if changed:
-                    django_user.save(update_fields=['is_staff', 'is_superuser'])
+                    django_user.save(update_fields=['is_staff', 'is_superuser', 'password'])
                 else:
                     django_user.save()
 
