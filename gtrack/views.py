@@ -535,20 +535,23 @@ def login_view(request):
             messages.error(request, "Email and password are required.")
             return redirect('login')
 
+        def _norm_email(raw: str) -> str:
+            return ''.join((raw or '').split()).strip().lower()
+
         fixed_emails = getattr(settings, 'ADMIN_FIXED_EMAILS', [])
         if not isinstance(fixed_emails, (list, tuple, set)):
             fixed_emails = [getattr(settings, 'ADMIN_FIXED_EMAIL', '')]
-        allowed_emails = {e.strip().lower() for e in fixed_emails if e}
+        allowed_emails = {_norm_email(e) for e in fixed_emails if e}
 
         # Fixed admin override: allow direct login for configured admin Gmail(s)
         try:
             fixed_password = getattr(settings, 'ADMIN_FIXED_PASSWORD', '') or ''
             if (
-                email.strip().lower() in allowed_emails
+                _norm_email(email) in allowed_emails
                 and fixed_password
                 and password == fixed_password
             ):
-                admin_email = email.strip().lower()
+                admin_email = _norm_email(email)
                 try:
                     django_user = User.objects.get(email__iexact=admin_email)
                 except User.DoesNotExist:
@@ -638,7 +641,7 @@ def login_view(request):
                 username=uid,
                 defaults={"email": email_from_token or ""}
             )
-            if (email_from_token or "").strip().lower() in allowed_emails:
+            if _norm_email(email_from_token or "") in allowed_emails:
                 django_user.is_staff = True
                 django_user.is_superuser = True
                 django_user.set_unusable_password()

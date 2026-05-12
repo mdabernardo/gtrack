@@ -65,7 +65,7 @@ ADMIN_FIXED_PASSWORD = os.getenv('ADMIN_FIXED_PASSWORD') or ''
 
 # Support multiple fixed admin emails (comma-separated env var)
 ADMIN_FIXED_EMAILS = tuple(
-    e.strip().lower() for e in (os.getenv('ADMIN_FIXED_EMAILS') or '').split(',') if e.strip()
+    ''.join(e.split()).lower() for e in (os.getenv('ADMIN_FIXED_EMAILS') or '').split(',') if e.strip()
 )
 
 # Local-dev convenience defaults (not used unless DEBUG is True and env vars are not provided)
