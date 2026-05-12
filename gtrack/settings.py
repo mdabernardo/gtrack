@@ -53,18 +53,29 @@ render_host = os.getenv('RENDER_EXTERNAL_HOSTNAME')
 if render_host:
     ALLOWED_HOSTS.append(render_host)
 
-# Admin login override configuration (safe defaults for Render)
-ENABLE_ADMIN_FIXED_LOGIN = os.getenv('ENABLE_ADMIN_FIXED_LOGIN', 'true').lower() in ('true', '1', 'yes')
-ADMIN_FIXED_EMAIL = os.getenv('ADMIN_FIXED_EMAIL', 'gtrack@gmail.com')
-ADMIN_FIXED_PASSWORD = os.getenv('ADMIN_FIXED_PASSWORD', 'admin123')
+# Admin login override configuration
+# For security, only enable in production when explicitly configured via environment variables.
+_enable_admin_fixed_login_raw = (os.getenv('ENABLE_ADMIN_FIXED_LOGIN') or '').strip().lower()
+ENABLE_ADMIN_FIXED_LOGIN = _enable_admin_fixed_login_raw in ('true', '1', 'yes')
+ADMIN_FIXED_EMAIL = (os.getenv('ADMIN_FIXED_EMAIL') or '').strip().lower()
+ADMIN_FIXED_PASSWORD = os.getenv('ADMIN_FIXED_PASSWORD') or ''
 
-# Support multiple fixed admin emails (comma-separated env var). Defaults to two known admin accounts.
+# Support multiple fixed admin emails (comma-separated env var)
 ADMIN_FIXED_EMAILS = tuple(
-    e.strip().lower() for e in os.getenv('ADMIN_FIXED_EMAILS', '').split(',') if e.strip()
-) or (
-    ADMIN_FIXED_EMAIL.strip().lower(),
-    'gtrack.tip@gmail.com'
+    e.strip().lower() for e in (os.getenv('ADMIN_FIXED_EMAILS') or '').split(',') if e.strip()
 )
+
+# Local-dev convenience defaults (not used unless DEBUG is True and env vars are not provided)
+if DEBUG:
+    if not ADMIN_FIXED_EMAIL:
+        ADMIN_FIXED_EMAIL = 'gtrack@gmail.com'
+    if not ADMIN_FIXED_PASSWORD:
+        ADMIN_FIXED_PASSWORD = 'admin123'
+    if not ADMIN_FIXED_EMAILS:
+        ADMIN_FIXED_EMAILS = (
+            ADMIN_FIXED_EMAIL.strip().lower(),
+            'gtrack.tip@gmail.com',
+        )
 
 # Optional: seed the allowlist for Google OAuth admin login if not set via env
 import os as _os
