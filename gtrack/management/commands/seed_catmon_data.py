@@ -79,8 +79,11 @@ class Command(BaseCommand):
                         {
                             "name": name,
                             "location": name,
+                            "lat": float(lat),
+                            "lng": float(lng),
                             "latitude": float(lat),
                             "longitude": float(lng),
+                            "coords": {"lat": float(lat), "lng": float(lng)},
                             "barangay": "Catmon",
                             "city": "Malabon City",
                             "address": f"{name}, Catmon, Malabon City",
