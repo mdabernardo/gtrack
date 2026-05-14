@@ -37,15 +37,17 @@ class Command(BaseCommand):
             "Justice",
             "Dumpsite",
         ]
-        catmon_center_lat = 14.6591
-        catmon_center_lng = 120.9569
+        # Catmon (Malabon City) approximate center coordinates
+        # Source: public reference coordinates for Catmon barangay
+        catmon_center_lat = 14.6700
+        catmon_center_lng = 120.9602
         pinned = [
-            ("Sitio 6 basketball court", catmon_center_lat + 0.0010, catmon_center_lng + 0.0007),
-            ("Dumpsite", catmon_center_lat - 0.0012, catmon_center_lng - 0.0006),
-            ("Gulayan", catmon_center_lat + 0.0004, catmon_center_lng - 0.0010),
-            ("SM Hoa", catmon_center_lat - 0.0003, catmon_center_lng + 0.0011),
-            ("Lucas Compound", catmon_center_lat + 0.0014, catmon_center_lng - 0.0002),
-            ("Justice", catmon_center_lat - 0.0010, catmon_center_lng + 0.0003),
+            ("Sitio 6 basketball court", catmon_center_lat + 0.0007, catmon_center_lng - 0.0006),
+            ("Dumpsite", catmon_center_lat - 0.0009, catmon_center_lng + 0.0005),
+            ("Gulayan", catmon_center_lat + 0.0004, catmon_center_lng + 0.0009),
+            ("SM Hoa", catmon_center_lat - 0.0004, catmon_center_lng - 0.0008),
+            ("Lucas Compound", catmon_center_lat + 0.0011, catmon_center_lng + 0.0001),
+            ("Justice", catmon_center_lat - 0.0002, catmon_center_lng + 0.0012),
         ]
 
         if only_dropoffs:
