@@ -7,7 +7,8 @@
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
     <style>
         body {
-            background: #5dbb29; /* Main background color from dashboard */
+            background: radial-gradient(1200px 700px at 20% 10%, rgba(255,255,255,0.55), rgba(255,255,255,0) 60%),
+                        linear-gradient(180deg, #5dbb29 0%, #48b120 20%, #eaffea 85%);
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
@@ -63,26 +64,43 @@
 
         .main {
             min-height: 92vh;
-            padding: 36px 0 20px 0;
+            padding: 28px 16px 28px 16px;
             display: flex;
             flex-direction: column;
             align-items: center;
         }
 
         .container {
-            max-width: 800px;
-            width: 90%;
+            max-width: 980px;
+            width: 100%;
             margin: 0 auto;
             background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+            border-radius: 16px;
+            box-shadow: 0 16px 50px rgba(2, 6, 23, 0.18);
+            padding: 0;
+            overflow: hidden;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+        }
+
+        .profile-banner {
+            height: 120px;
+            background:
+                radial-gradient(600px 180px at 30% 40%, rgba(255,255,255,0.35), rgba(255,255,255,0) 60%),
+                linear-gradient(135deg, #32a000 0%, #5dbb29 55%, #8fe96d 100%);
+        }
+
+        .container-inner {
             padding: 24px;
         }
 
         .profile-header {
             margin-bottom: 24px;
-            border-bottom: 1px solid #e9ecef;
-            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+            padding-bottom: 14px;
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 14px;
         }
 
         .profile-header h2 {
@@ -91,16 +109,26 @@
             margin: 0;
         }
 
+        .profile-subtitle {
+            color: #64748b;
+            font-size: 0.95em;
+            font-weight: 600;
+            margin: 0;
+        }
+
         .profile-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 40px;
-            justify-content: center;
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            gap: 28px;
+            align-items: start;
         }
 
         .profile-photo-block {
-            flex: 0 0 200px;
             text-align: center;
+            background: rgba(241, 245, 249, 0.65);
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 16px;
+            padding: 18px 16px;
         }
 
         .profile-photo {
@@ -108,22 +136,33 @@
             height: 150px;
             border-radius: 50%;
             object-fit: cover;
-            border: 3px solid #32a000; /* Main green color */
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            margin-bottom: 12px;
+            border: 4px solid rgba(255,255,255,0.9);
+            box-shadow: 0 14px 30px rgba(2, 6, 23, 0.18);
+            margin-bottom: 14px;
+        }
+
+        .avatar-actions {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 6px;
         }
 
         .photo-overlay-btn {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             padding: 7px 18px;
             background: #32a000; /* Main green color */
             color: #fff;
             border: none;
-            border-radius: 5px;
+            border-radius: 10px;
             font-size: 1em;
             cursor: pointer;
             transition: background 0.2s;
-            font-weight: normal;
+            font-weight: 800;
+            letter-spacing: 0.2px;
         }
 
         .photo-overlay-btn:hover {
@@ -139,10 +178,14 @@
             margin-top: 10px;
             color: #555;
             font-size: 1.1em;
+            line-height: 1.25;
         }
 
         .profile-form-block {
-            flex: 1 1 350px;
+            background: rgba(255, 255, 255, 0.85);
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 16px;
+            padding: 18px 18px 16px 18px;
         }
 
         .btn-main {
@@ -150,15 +193,31 @@
             color: #fff;
             border: none;
             padding: 12px 30px;
-            border-radius: 5px;
+            border-radius: 12px;
             margin-top: 15px;
             font-size: 1.05em;
             cursor: pointer;
             transition: background 0.2s;
+            font-weight: 900;
         }
 
         .btn-main:hover {
             background: #256b00;
+        }
+
+        .btn-secondary {
+            background: #0f172a;
+        }
+
+        .btn-secondary:hover {
+            background: #111827;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
         }
 
         .form-group {
@@ -200,13 +259,12 @@
 
         /* Responsive adjustments */
         @media (max-width: 650px) {
-            .container {
-                padding: 14px;
-                margin: 20px;
+            .container-inner {
+                padding: 16px;
             }
 
             .profile-row {
-                flex-direction: column;
+                grid-template-columns: 1fr;
                 gap: 20px;
             }
         }
@@ -349,8 +407,12 @@
 
     <div class="main">
         <div class="container">
-            <div class="profile-header">
-                <h2>My Profile</h2>
+            <div class="profile-banner"></div>
+            <div class="container-inner">
+                <div class="profile-header">
+                    <h2>My Profile</h2>
+                    <p class="profile-subtitle">Update your account details</p>
+                </div>
                 {% if messages %}
                 <div style="margin-top:10px">
                     {% for message in messages %}
@@ -360,18 +422,19 @@
                     {% endfor %}
                 </div>
                 {% endif %}
-            </div>
             <form id="profile-form" method="post" enctype="multipart/form-data">
                 {% csrf_token %}
                 <div class="profile-row">
                     <div class="profile-photo-block">
                         {% if user_profile and user_profile.photo %}
-                            <img src="{{ user_profile.photo.url }}" alt="Profile Photo" class="profile-photo" id="profile-preview">
+                            <img src="{{ user_profile.photo.url }}" alt="Profile Photo" class="profile-photo" id="profile-preview" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%20128%20128%27%3E%3Cdefs%3E%3ClinearGradient%20id%3D%27g%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%271%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%2332a000%27/%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%235dbb29%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%27128%27%20height%3D%27128%27%20rx%3D%2764%27%20fill%3D%27url(%23g)%27/%3E%3Cpath%20fill%3D%27%23ffffff%27%20d%3D%27M64%2064c13.3%200%2024-10.7%2024-24S77.3%2016%2064%2016%2040%2026.7%2040%2040s10.7%2024%2024%2024zm0%2012c-22.1%200-40%2011.1-40%2024.9V112h80V100.9C104%2087.1%2086.1%2076%2064%2076z%27/%3E%3C/svg%3E';">
                         {% else %}
-                            <img src="{% static 'img/default.jpg' %}" alt="Profile Photo" class="profile-photo" id="profile-preview">
+                            <img src="data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%20128%20128%27%3E%3Cdefs%3E%3ClinearGradient%20id%3D%27g%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%271%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%2332a000%27/%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%235dbb29%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%27128%27%20height%3D%27128%27%20rx%3D%2764%27%20fill%3D%27url(%23g)%27/%3E%3Cpath%20fill%3D%27%23ffffff%27%20d%3D%27M64%2064c13.3%200%2024-10.7%2024-24S77.3%2016%2064%2016%2040%2026.7%2040%2040s10.7%2024%2024%2024zm0%2012c-22.1%200-40%2011.1-40%2024.9V112h80V100.9C104%2087.1%2086.1%2076%2064%2076z%27/%3E%3C/svg%3E" alt="Profile Photo" class="profile-photo" id="profile-preview">
                         {% endif %}
-                        <label class="photo-overlay-btn" for="photo-input">Change Photo</label>
-                        <input type="file" id="photo-input" name="photo" accept="image/*">
+                        <div class="avatar-actions">
+                            <label class="photo-overlay-btn" for="photo-input">Change Photo</label>
+                            <input type="file" id="photo-input" name="photo" accept="image/*">
+                        </div>
                         <div class="profile-username">Username: <span id="username-display">
                             {% if user.get_full_name %}
                                 {{ user.get_full_name }}
@@ -399,13 +462,14 @@
                             <label for="email-input">Email Address</label>
                             <input type="email" id="email-input" name="email" value="{{ user.email }}">
                         </div>
-                        <div style="display:flex; gap:10px; align-items:center;">
+                        <div class="btn-row">
                             <button type="submit" class="btn-main">Save Changes</button>
-                            <button type="button" id="edit-btn" class="btn-main" style="background:#555;">Edit Profile</button>
+                            <button type="button" id="edit-btn" class="btn-main btn-secondary">Edit Profile</button>
                         </div>
                     </div>
                 </div>
             </form>
+            </div>
         </div>
     </div>
 

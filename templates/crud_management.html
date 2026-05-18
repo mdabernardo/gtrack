@@ -230,8 +230,9 @@
         const app = firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         
-        // Define the single collection
-        const COLLECTION_NAME = "dropofflocation";
+        // Use a Catmon-specific dataset (prefer the main drop-offs collection if present)
+        const READ_COLLECTIONS = ["dropoffs", "dropofflocation"];
+        const WRITE_COLLECTION = "dropoffs";
         
         let map; 
         let geocoder; 
@@ -239,7 +240,100 @@
         let newMarker = null; 
         let infoWindow; 
 
-        const defaultCenter = { lat: 14.662, lng: 120.949 }; 
+        const CATMON_CENTER = { lat: 14.6700, lng: 120.9602 };
+        const CATMON_BOUNDS_SPEC = { north: 14.6800, south: 14.6600, east: 120.9720, west: 120.9480 };
+        const defaultCenter = CATMON_CENTER;
+        let CATMON_BOUNDS = null;
+        const pendingGeocode = new Set();
+        const pendingDedupDelete = new Set();
+        const FIXED_ADDRESS_BY_KEY = {
+            'justice': 'CATMON FIRE RESCUE BRIGADE INC., Hernandez St, Catmon, Malabon, Metro Manila, Philippines',
+            'sm hoa': 'Mamihan At Lugawan Ni Sael, 43 Gov. Pascual Ave, Catmon, Malabon, Metro Manila, Philippines',
+            'dumpsite': 'ERT NHQ, MX97+4PQ, Gov. Pascual Ave, Malabon, Metro Manila, Philippines',
+        };
+        function isWithinCatmonLatLng(latLng) {
+            return !!(CATMON_BOUNDS && latLng && CATMON_BOUNDS.contains(latLng));
+        }
+        function safeStr(v) { return (v === null || v === undefined) ? '' : String(v); }
+        function canonKey(v) { return safeStr(v).trim().toLowerCase().replace(/\s+/g, ' '); }
+        function tsMillis(v) {
+            if (!v) return null;
+            try {
+                if (typeof v === 'object' && typeof v.toMillis === 'function') return v.toMillis();
+            } catch (e) {}
+            try {
+                const d = new Date(v);
+                const t = d.getTime();
+                return isFinite(t) ? t : null;
+            } catch (e) {}
+            return null;
+        }
+        function hasValidLatLng(item) {
+            const lat = Number(item && item.latitude);
+            const lng = Number(item && item.longitude);
+            return Number.isFinite(lat) && Number.isFinite(lng);
+        }
+        function isInsideCatmonItem(item) {
+            if (!CATMON_BOUNDS) return false;
+            if (!hasValidLatLng(item)) return false;
+            return isWithinCatmonLatLng(new google.maps.LatLng(Number(item.latitude), Number(item.longitude)));
+        }
+        function pickBestOfGroup(group) {
+            const scored = (group || []).map((it) => {
+                const col = safeStr(it.__collection).trim() || '';
+                const preferred = (col === WRITE_COLLECTION) ? 1 : 0;
+                const inside = isInsideCatmonItem(it) ? 1 : 0;
+                const valid = hasValidLatLng(it) ? 1 : 0;
+                const ts = (
+                    tsMillis(it.updatedAt) ??
+                    tsMillis(it.updated_at) ??
+                    tsMillis(it.timestamp) ??
+                    tsMillis(it.createdAt) ??
+                    tsMillis(it.created_at) ??
+                    null
+                );
+                return { it, preferred, inside, valid, ts: (ts === null ? -1 : ts) };
+            });
+            scored.sort((a, b) =>
+                (b.inside - a.inside) ||
+                (b.preferred - a.preferred) ||
+                (b.valid - a.valid) ||
+                (b.ts - a.ts)
+            );
+            return scored.length ? scored[0].it : null;
+        }
+        function dedupeByName(items) {
+            const byName = new Map();
+            (items || []).forEach((it) => {
+                const name = safeStr(it.location || it.name || '').trim();
+                const key = canonKey(name);
+                if (!key) return;
+                const arr = byName.get(key) || [];
+                arr.push(it);
+                byName.set(key, arr);
+            });
+            const keep = [];
+            const drop = [];
+            byName.forEach((arr) => {
+                if (!arr || !arr.length) return;
+                const best = pickBestOfGroup(arr);
+                if (best) keep.push(best);
+                arr.forEach((x) => { if (best && x === best) return; drop.push(x); });
+            });
+            keep.sort((a, b) => safeStr(a.location || a.name).localeCompare(safeStr(b.location || b.name)));
+            return { keep, drop };
+        }
+        function deleteDuplicateDocs(dups) {
+            (dups || []).forEach((it) => {
+                const col = safeStr(it.__collection).trim() || '';
+                const id = safeStr(it.id).trim();
+                if (!col || !id) return;
+                const key = col + '|' + id;
+                if (pendingDedupDelete.has(key)) return;
+                pendingDedupDelete.add(key);
+                db.collection(col).doc(id).delete().catch(() => {});
+            });
+        }
 
         // Function to determine marker icon for Drop-off Locations
         function getMarkerIcon() {
@@ -267,19 +361,37 @@
 
             infoWindow = new google.maps.InfoWindow(); 
 
+            CATMON_BOUNDS = new google.maps.LatLngBounds(
+                new google.maps.LatLng(CATMON_BOUNDS_SPEC.south, CATMON_BOUNDS_SPEC.west),
+                new google.maps.LatLng(CATMON_BOUNDS_SPEC.north, CATMON_BOUNDS_SPEC.east)
+            );
+
             map = new google.maps.Map(document.getElementById('map'), {
                 center: defaultCenter,
-                zoom: 15,
-                mapId: "DEMO_MAP_ID" 
+                zoom: 16,
+                mapId: "DEMO_MAP_ID",
+                restriction: { latLngBounds: CATMON_BOUNDS, strictBounds: true }
             });
             geocoder = new google.maps.Geocoder();
             
             // Set up real-time listener for Drop-off Locations
-            db.collection(COLLECTION_NAME).onSnapshot((snapshot) => {
-                const dropOffData = snapshot.docs.map(doc => ({ id: doc.id, collection: COLLECTION_NAME, ...doc.data() }));
-                updateDashboard(dropOffData);
-            }, (error) => {
-                console.error("Error listening to Firestore (Drop-off Location): ", error);
+            const byCollection = {};
+            function renderMerged() {
+                const merged = [];
+                Object.keys(byCollection).forEach((col) => {
+                    (byCollection[col] || []).forEach((x) => merged.push(x));
+                });
+                const dd = dedupeByName(merged);
+                updateDashboard(dd.keep);
+                if (dd.drop.length) deleteDuplicateDocs(dd.drop);
+            }
+            READ_COLLECTIONS.forEach((colName) => {
+                db.collection(colName).onSnapshot((snapshot) => {
+                    byCollection[colName] = snapshot.docs.map(doc => ({ id: doc.id, __collection: colName, ...doc.data() }));
+                    renderMerged();
+                }, (error) => {
+                    console.error(`Error listening to Firestore (${colName}): `, error);
+                });
             });
             
             document.getElementById('add-location-btn').addEventListener('click', () => {
@@ -301,6 +413,11 @@
 
         function handleMapClickForNewLocation(mapsMouseEvent) {
             const latLng = mapsMouseEvent.latLng;
+
+            if (!isWithinCatmonLatLng(latLng)) {
+                alert("Please place drop-off locations only within Catmon, Malabon City.");
+                return;
+            }
             
             if (newMarker) {
                 newMarker.setMap(null);
@@ -319,7 +436,7 @@
             });
 
             document.getElementById('doc-id').value = ''; 
-            document.getElementById('collection-type').value = COLLECTION_NAME; 
+            document.getElementById('collection-type').value = WRITE_COLLECTION; 
             document.getElementById('latitude').value = latLng.lat();
             document.getElementById('longitude').value = latLng.lng();
             document.getElementById('location').value = '';
@@ -337,10 +454,18 @@
         document.getElementById('location-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const docId = document.getElementById('doc-id').value;
-            // collectionName is always COLLECTION_NAME
+            const collectionName = safeStr(document.getElementById('collection-type').value).trim() || WRITE_COLLECTION;
             const location = document.getElementById('location').value;
             const latitude = parseFloat(document.getElementById('latitude').value);
             const longitude = parseFloat(document.getElementById('longitude').value);
+
+            if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+                const ll = new google.maps.LatLng(latitude, longitude);
+                if (!isWithinCatmonLatLng(ll)) {
+                    alert("This location is outside Catmon, Malabon City. Please choose a point within Catmon.");
+                    return;
+                }
+            }
 
             let data = {
                 location: location,
@@ -351,11 +476,11 @@
 
             try {
                 if (docId) {
-                    await db.collection(COLLECTION_NAME).doc(docId).update(data);
-                    console.log(`Document successfully updated in ${COLLECTION_NAME}!`);
+                    await db.collection(collectionName).doc(docId).update(data);
+                    console.log(`Document successfully updated in ${collectionName}!`);
                 } else {
-                    await db.collection(COLLECTION_NAME).add(data);
-                    console.log(`Document successfully created in ${COLLECTION_NAME}!`);
+                    await db.collection(collectionName).add(data);
+                    console.log(`Document successfully created in ${collectionName}!`);
                 }
                 closeModal();
             } catch (error) {
@@ -365,10 +490,11 @@
         });
 
         // Reusable Delete Function
-        window.deleteLocation = async (docId) => {
+        window.deleteLocation = async (docId, collectionName) => {
+            const col = safeStr(collectionName).trim() || WRITE_COLLECTION;
             if (confirm("Are you sure you want to delete this Drop-off Location?")) {
                 try {
-                    await db.collection(COLLECTION_NAME).doc(docId).delete();
+                    await db.collection(col).doc(docId).delete();
                     infoWindow.close(); 
                     alert("Location successfully deleted!");
                 } catch (error) {
@@ -381,7 +507,7 @@
         // Reusable Edit Function
         window.editLocation = (item) => {
             document.getElementById('doc-id').value = item.id;
-            document.getElementById('collection-type').value = COLLECTION_NAME;
+            document.getElementById('collection-type').value = item.__collection || WRITE_COLLECTION;
             document.getElementById('location').value = item.location || '';
             document.getElementById('latitude').value = item.latitude;
             document.getElementById('longitude').value = item.longitude;
@@ -404,8 +530,77 @@
             if (infoWindow) infoWindow.close(); 
             
             const markerIcon = getMarkerIcon();
+            function tryGeocodeToCatmon(item) {
+                if (!geocoder || !item) return;
+                const col = safeStr(item.__collection).trim() || WRITE_COLLECTION;
+                const id = safeStr(item.id).trim();
+                if (!id) return;
+                const key = col + '|' + id;
+                if (pendingGeocode.has(key)) return;
+                const name = safeStr(item.location || item.name || '').trim();
+                if (!name) return;
+                pendingGeocode.add(key);
+                const nk = canonKey(name);
+                const fixed = FIXED_ADDRESS_BY_KEY[nk];
+                const addr = fixed ? fixed : `${name}, Catmon, Malabon, Metro Manila, Philippines`;
+                geocoder.geocode({ address: addr }, (results, status) => {
+                    if (status !== 'OK' || !results || !results[0] || !results[0].geometry) return;
+                    const ll = results[0].geometry.location;
+                    if (!ll) return;
+                    if (CATMON_BOUNDS && !isWithinCatmonLatLng(ll)) return;
+                    db.collection(col).doc(id).set({
+                        latitude: ll.lat(),
+                        longitude: ll.lng(),
+                        area: 'Catmon',
+                        city: 'Malabon',
+                        barangay: 'Catmon',
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true }).catch(() => {});
+                });
+            }
+
+            const usedPos = new Set();
+            function normalizePosKey(ll) {
+                const lat = ll.lat().toFixed(6);
+                const lng = ll.lng().toFixed(6);
+                return lat + ',' + lng;
+            }
+            function ensureUniquePos(ll) {
+                let cur = ll;
+                for (let i = 0; i < 25; i++) {
+                    const key = normalizePosKey(cur);
+                    if (!usedPos.has(key)) {
+                        usedPos.add(key);
+                        return cur;
+                    }
+                    const d = 0.00035 + (i * 0.00012);
+                    cur = new google.maps.LatLng(cur.lat() + (d * 0.55), cur.lng() + (d * 0.75));
+                }
+                return cur;
+            }
+            function pickMarkerPosition(item, idx) {
+                const lat = Number(item.latitude);
+                const lng = Number(item.longitude);
+                const hasLL = Number.isFinite(lat) && Number.isFinite(lng);
+                if (hasLL) {
+                    const ll = new google.maps.LatLng(lat, lng);
+                    if (!CATMON_BOUNDS || isWithinCatmonLatLng(ll)) return ensureUniquePos(ll);
+                }
+                const c = CATMON_BOUNDS ? CATMON_BOUNDS.getCenter() : new google.maps.LatLng(CATMON_CENTER.lat, CATMON_CENTER.lng);
+                const off = (idx + 1) * 0.00018;
+                return ensureUniquePos(new google.maps.LatLng(c.lat() + (off * 0.25), c.lng() + (off * 0.35)));
+            }
+
+            const filtered = (data || []).filter(item => {
+                const name = safeStr(item.location || item.name || '').trim();
+                return !!name;
+            });
             
-            data.forEach(item => {
+            if (!filtered.length) {
+                legendList.innerHTML = '<li class="text-sm text-gray-600">No drop-off locations found within Catmon, Malabon City.</li>';
+            }
+
+            filtered.forEach(item => {
                 
                 // Update List/Legend
                 const li = document.createElement('li');
@@ -417,8 +612,9 @@
                 `;
                 legendList.appendChild(li);
 
-                if (item.latitude && item.longitude && map) {
-                    const position = { lat: item.latitude, lng: item.longitude };
+                if (map) {
+                    const ll = pickMarkerPosition(item, markers.length);
+                    const position = { lat: ll.lat(), lng: ll.lng() };
                     
                     const marker = new google.maps.Marker({
                         position: position,
@@ -443,7 +639,7 @@
                                         class="bg-yellow-500 hover:bg-yellow-600 text-white text-sm py-1 px-3 rounded">
                                         Edit
                                     </button>
-                                    <button onclick="deleteLocation('${item.id}')" 
+                                    <button onclick="deleteLocation('${item.id}', '${safeStr(item.__collection).replace(/'/g, '\\\'')}')" 
                                         class="bg-red-500 hover:bg-red-600 text-white text-sm py-1 px-3 rounded">
                                         Delete
                                     </button>
@@ -467,14 +663,25 @@
                 }
             });
 
-            // Fit map bounds to all markers
-            if (markers.length > 0) {
-                const bounds = new google.maps.LatLngBounds();
-                markers.forEach(marker => bounds.extend(marker.getPosition()));
-                map.fitBounds(bounds);
-            } else if (map) {
+            (data || []).forEach((item) => {
+                const nm = canonKey(item && (item.location || item.name || ''));
+                if (FIXED_ADDRESS_BY_KEY[nm]) {
+                    tryGeocodeToCatmon(item);
+                    return;
+                }
+                const lat = Number(item.latitude);
+                const lng = Number(item.longitude);
+                const hasLL = Number.isFinite(lat) && Number.isFinite(lng);
+                if (hasLL) {
+                    const ll = new google.maps.LatLng(lat, lng);
+                    if (!CATMON_BOUNDS || isWithinCatmonLatLng(ll)) return;
+                }
+                tryGeocodeToCatmon(item);
+            });
+
+            if (map) {
                 map.setCenter(defaultCenter);
-                map.setZoom(15);
+                map.setZoom(16);
             }
         }
 
