@@ -32,16 +32,37 @@
             </div>
         </div>
     </div>
-    <div class="flex-grow flex justify-center items-start p-8">
-        <div class="flex flex-col md:flex-row gap-8 w-full max-w-5xl">
-            <div class="flex-1 bg-[#d1ffd0] rounded-xl shadow-md p-6">
-                <h2 class="text-2xl font-bold text-[#32a000] mb-4">Waste Level</h2>
-                <div id="map" class="w-full h-80 bg-gray-100 rounded-lg"></div>
+    <div class="px-8 py-8">
+        <div class="w-full max-w-5xl mx-auto bg-[#d1ffd0] rounded-xl shadow-md p-6">
+            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <h2 class="text-2xl font-bold text-[#32a000]">Garbage Level Records</h2>
+                <div class="flex items-center gap-3">
+                    <div class="text-sm font-semibold text-gray-700">Location</div>
+                    <select id="records-location-filter" class="bg-white/80 border border-white/60 rounded-lg px-3 py-2 text-sm font-semibold text-gray-800">
+                        <option value="__all__">All (6)</option>
+                    </select>
+                    <div class="text-sm font-semibold text-gray-700">Show</div>
+                    <select id="records-limit" class="bg-white/80 border border-white/60 rounded-lg px-3 py-2 text-sm font-semibold text-gray-800">
+                        <option value="50">50</option>
+                        <option value="100" selected>100</option>
+                        <option value="200">200</option>
+                    </select>
+                </div>
             </div>
-            <div class="flex-1 bg-[#d1ffd0] rounded-xl shadow-md p-6">
-                <h2 class="text-2xl font-bold text-[#32a000] mb-4">Legend</h2>
-                <ul id="legend-list" class="space-y-4">
-                </ul>
+            <div id="records-summary" class="mt-3 text-sm font-semibold text-gray-700"></div>
+            <div class="mt-4 overflow-auto max-h-[520px] rounded-lg bg-white/70 border border-white/60">
+                <table class="min-w-full text-sm text-gray-900">
+                    <thead class="sticky top-0 bg-white/90">
+                        <tr>
+                            <th class="text-left px-4 py-3 font-extrabold">Date</th>
+                            <th class="text-left px-4 py-3 font-extrabold">Time</th>
+                            <th class="text-left px-4 py-3 font-extrabold">Location</th>
+                            <th class="text-left px-4 py-3 font-extrabold">Level</th>
+                            <th class="text-left px-4 py-3 font-extrabold">Label</th>
+                        </tr>
+                    </thead>
+                    <tbody id="records-body" class="divide-y divide-white/60"></tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -66,37 +87,6 @@
         let garbageData = [];
         const routePoints = {{ route_points_json|default:"[]"|safe }};
         
-        const GOOGLE_MAPS_API_KEY = firebaseConfig.apiKey;
-        
-        let map; // Google Maps object
-        let geocoder; // Google Geocoder service
-        let markers = []; // Array to hold Google Maps markers
-
-        // Default location: Catmon, Malabon, Philippines
-        const defaultCenter = { lat: 14.662, lng: 120.949 }; 
-
-        // Function to initialize the Google Map
-        function initMap() {
-            // Check if the map element exists and Google Maps API has loaded
-            if (!document.getElementById('map') || typeof google === 'undefined' || !google.maps) {
-                console.error("Google Maps API did not load correctly or map element is missing.");
-                return;
-            }
-
-            map = new google.maps.Map(document.getElementById('map'), {
-                center: defaultCenter,
-                zoom: 15,
-                // It's highly recommended to replace "DEMO_MAP_ID" with your actual Map ID for custom styling.
-                mapId: "DEMO_MAP_ID" 
-            });
-            geocoder = new google.maps.Geocoder();
-            
-            db.collection("garbagelevel").onSnapshot((snapshot) => {
-                processGarbageSnapshot(snapshot);
-            });
-        }
-        window.initMap = initMap; // Expose to global scope for the Google Maps script tag
-
         function normalizeWasteLevel(raw) {
             if (raw === null || raw === undefined || raw === '') return null;
             if (typeof raw === 'number') {
@@ -139,11 +129,11 @@
                 label = '?';
             }
 
-            // A custom SVG for a circular marker
+            // A custom SVG for a square marker (same style as drop-off management)
             const svg = `
                 <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="15" cy="15" r="13" fill="${color}" stroke="white" stroke-width="2"/>
-                    <text x="15" y="20" font-family="Arial, sans-serif" font-size="14" fill="white" text-anchor="middle" font-weight="bold">${label}</text>
+                    <rect x="5" y="5" width="20" height="20" rx="5" fill="${color}" stroke="white" stroke-width="2"/>
+                    <text x="15" y="21" font-family="Arial, sans-serif" font-size="14" fill="white" text-anchor="middle" font-weight="bold">${label}</text>
                 </svg>`;
             
             return {
@@ -155,139 +145,15 @@
             };
         }
 
-        // Function to geocode an address string (using Google Geocoding)
-        async function geocodeAddress(location) {
-            return new Promise((resolve) => {
-                // geocoder is initialized in initMap
-                geocoder.geocode({ 'address': location }, function(results, status) {
-                    if (status === 'OK' && results.length > 0) {
-                        const geometry = results[0].geometry.location;
-                        resolve({
-                            latitude: geometry.lat(),
-                            longitude: geometry.lng()
-                        });
-                    } else {
-                        console.error(`Geocoding failed for ${location}: ${status}`);
-                        resolve(null);
-                    }
-                });
-            });
-        }
-
-        function parseLatLng(v) {
-            if (v === null || v === undefined || v === '') return null;
-            const n = (typeof v === 'string') ? parseFloat(v) : Number(v);
-            return Number.isFinite(n) ? n : null;
-        }
-
-        function geoCacheKey(name) {
-            return 'gt_geo_' + canonKey(name || '');
-        }
-
-        function tryLoadCachedCoords(item) {
-            const locName = item.location || item.location_name || item.locationName || item.name || '';
-            const key = geoCacheKey(locName);
-            try {
-                const raw = localStorage.getItem(key);
-                if (!raw) return false;
-                const obj = JSON.parse(raw);
-                const lat = parseLatLng(obj && obj.latitude);
-                const lng = parseLatLng(obj && obj.longitude);
-                if (lat === null || lng === null) return false;
-                item.latitude = lat;
-                item.longitude = lng;
-                return true;
-            } catch (e) {
-                return false;
-            }
-        }
-
-        let geoQueue = [];
-        let geoActive = 0;
-        let geoDirty = false;
-        function scheduleDashboardUpdate() {
-            if (geoDirty) return;
-            geoDirty = true;
-            setTimeout(() => {
-                geoDirty = false;
-                if (map) updateDashboard();
-            }, 250);
-        }
-
-        function pumpGeoQueue() {
-            while (geoActive < 2 && geoQueue.length) {
-                const job = geoQueue.shift();
-                geoActive += 1;
-                job()
-                    .catch(() => {})
-                    .finally(() => {
-                        geoActive -= 1;
-                        pumpGeoQueue();
-                    });
-            }
-        }
-
-        function ensureCoordinates(item, docRef) {
-            const lat = parseLatLng(item.latitude);
-            const lng = parseLatLng(item.longitude);
-            if (lat !== null && lng !== null) {
-                item.latitude = lat;
-                item.longitude = lng;
-                return;
-            }
-            if (tryLoadCachedCoords(item)) {
-                scheduleDashboardUpdate();
-                return;
-            }
-            const locName = item.location || item.location_name || item.locationName || item.name || '';
-            if (!locName) return;
-            geoQueue.push(async () => {
-                const coords = await geocodeAddress(locName + ", Malabon, Philippines");
-                if (!coords) return;
-                item.latitude = coords.latitude;
-                item.longitude = coords.longitude;
-                try {
-                    localStorage.setItem(geoCacheKey(locName), JSON.stringify({ latitude: coords.latitude, longitude: coords.longitude }));
-                } catch (e) {}
-                try {
-                    if (docRef) {
-                        await docRef.set({ latitude: coords.latitude, longitude: coords.longitude }, { merge: true });
-                    }
-                } catch (e) {}
-                scheduleDashboardUpdate();
-            });
-            pumpGeoQueue();
-        }
-
-        function pickLatestPerLocation(items) {
-            const byLoc = new Map();
-            items.forEach((it) => {
-                const nameRaw = (it.location || it.location_name || it.locationName || it.name || '').toString().trim();
-                if (!nameRaw) return;
-                const key = canonKey(nameRaw);
-                const k = pickLatestKey(it);
-                const prev = byLoc.get(key);
-                if (!prev) {
-                    byLoc.set(key, { key, name: nameRaw, item: it, latestKey: k });
-                    return;
-                }
-                if ((k || '') > (prev.latestKey || '')) {
-                    byLoc.set(key, { key, name: nameRaw, item: it, latestKey: k });
-                }
-            });
-            return Array.from(byLoc.values()).map((x) => x.item);
-        }
-
         function processGarbageSnapshot(snapshot) {
             const items = [];
             snapshot.forEach((doc) => {
                 const data = doc.data() || {};
-                const item = { id: doc.id, ...data };
-                ensureCoordinates(item, doc.ref);
-                items.push(item);
+                items.push({ id: doc.id, ...data });
             });
             garbageData = items;
-            if (map) updateDashboard();
+            renderHighestAnalysis();
+            renderRecords();
         }
 
         function levelScore(raw) {
@@ -426,92 +292,139 @@
             `;
         }
 
-        function updateDashboard() {
-            const legendList = document.getElementById('legend-list');
-            legendList.innerHTML = '';
-            
-            // Clear existing markers
-            markers.forEach(marker => marker.setMap(null));
-            markers = []; 
-            
-            const infoWindow = new google.maps.InfoWindow();
+        function safeStr(v) { return (v === null || v === undefined) ? '' : String(v); }
+        function desiredLocations() {
+            return [
+                { key: 'lucas compound', name: 'Lucas Compound' },
+                { key: 'sm hoa', name: 'SM Hoa' },
+                { key: 'justice', name: 'Justice' },
+                { key: 'sitio 6 basketball court', name: 'Sitio 6 basketball court' },
+                { key: 'dumpsite', name: 'Dumpsite' },
+                { key: 'gulayan', name: 'Gulayan' },
+            ];
+        }
+        function dtKey(it) {
+            const d = safeStr(it && it.date).trim();
+            const t = safeStr(it && it.time).trim();
+            if (d && t) return d + 'T' + t;
+            if (d) return d;
+            return '';
+        }
+        function normalizeLevelText(raw) {
+            const lvl = normalizeWasteLevel(raw);
+            return lvl ? lvl.label : 'N/A';
+        }
+        function normalizeLevelLabel(raw) {
+            const lvl = normalizeWasteLevel(raw);
+            if (!lvl) return { text: 'N/A', color: '#808080' };
+            if (lvl.key === 'low') return { text: 'Low', color: '#4bc0c0' };
+            if (lvl.key === 'medium') return { text: 'Medium', color: '#ffcd56' };
+            if (lvl.key === 'high') return { text: 'High', color: '#ff6384' };
+            return { text: lvl.label, color: '#808080' };
+        }
+        const RECORDS_START_DATE = '2025-12-21';
+        const RECORDS_END_DATE = '2026-05-01';
+        function inRecordRange(dateStr) {
+            const d = safeStr(dateStr).trim().slice(0, 10);
+            if (!d) return false;
+            return d >= RECORDS_START_DATE && d <= RECORDS_END_DATE;
+        }
+        function renderRecords() {
+            const body = document.getElementById('records-body');
+            const summary = document.getElementById('records-summary');
+            const sel = document.getElementById('records-location-filter');
+            const limSel = document.getElementById('records-limit');
+            if (!body || !summary || !sel || !limSel) return;
 
-            const currentItems = pickLatestPerLocation(garbageData);
-            currentItems.forEach(item => {
-                const levelRaw = (item.garbageLevel ?? item.garbage_level ?? item.level ?? item.severity ?? item.status);
-                const markerIcon = getMarkerIcon(levelRaw);
-                const locName = item.location || item.location_name || item.locationName || item.name || 'N/A';
-                
-                // Create Legend Item
-                const li = document.createElement('li');
-                li.className = 'flex items-center cursor-pointer hover:bg-gray-100 p-2 rounded';
-                li.innerHTML = `
-                    <span class="w-6 h-6 rounded-full" style="background-color: ${markerIcon.color};"></span>
-                    <span class="ml-3 text-gray-800 text-lg">${locName} - ${markerIcon.text}</span>
-                `;
-                legendList.appendChild(li);
+            const desired = desiredLocations();
+            const desiredSet = new Set(desired.map((x) => x.key));
 
+            if (!sel.dataset.ready) {
+                desired.forEach((loc) => {
+                    const opt = document.createElement('option');
+                    opt.value = loc.key;
+                    opt.textContent = loc.name;
+                    sel.appendChild(opt);
+                });
+                sel.dataset.ready = '1';
+                sel.addEventListener('change', renderRecords);
+                limSel.addEventListener('change', renderRecords);
+            }
 
-                const lat = typeof item.latitude === 'string' ? parseFloat(item.latitude) : item.latitude;
-                const lng = typeof item.longitude === 'string' ? parseFloat(item.longitude) : item.longitude;
-                if (lat && lng) {
-                    const position = { lat: lat, lng: lng };
-                    
-                    // Create the Google Maps Marker
-                    const marker = new google.maps.Marker({
-                        position: position,
-                        map: map,
-                        title: `${locName} - ${markerIcon.text}`,
-                        icon: {
-                            url: markerIcon.svg,
-                            scaledSize: new google.maps.Size(30, 30), 
-                            anchor: new google.maps.Point(15, 15), 
-                        },
-                    });
-                    
-                    // Add Info Window (Popup) listener
-                    marker.addListener("click", () => {
-                        infoWindow.setContent(`
-                            <div style="font-family: Arial;">
-                                <b>${locName}</b><br>
-                                Waste Level: <span style="font-weight: bold; color: ${markerIcon.color};">${markerIcon.text}</span>
-                            </div>
-                        `);
-                        infoWindow.open(map, marker);
-                    });
-                    
-                    markers.push(marker);
+            const filterKey = sel.value || '__all__';
+            const limit = Math.max(1, Math.min(500, Number(limSel.value) || 100));
 
-                    // Add click event to the legend item to center the map and open the info window
-                    li.addEventListener('click', () => {
-                        map.panTo(position);
-                        map.setZoom(17);
-                        // Re-open info window to draw attention to the location
-                        google.maps.event.trigger(marker, 'click');
-                    });
-                } else {
-                    console.warn(`Item with ID ${item.id} is missing coordinates or location.`);
+            const rows = (garbageData || [])
+                .map((it) => {
+                    const locName = safeStr(it.location || it.location_name || it.locationName || it.name).trim();
+                    const key = canonKey(locName);
+                    if (!key || !desiredSet.has(key)) return null;
+                    const raw = (it.garbageLevel ?? it.garbage_level ?? it.level ?? it.severity ?? it.status);
+                    return {
+                        key,
+                        location: locName,
+                        date: safeStr(it.date).trim(),
+                        time: safeStr(it.time).trim(),
+                        raw,
+                        dt: dtKey(it),
+                    };
+                })
+                .filter(Boolean)
+                .filter((r) => inRecordRange(r.date))
+                .filter((r) => filterKey === '__all__' ? true : r.key === filterKey)
+                .sort((a, b) => (b.dt || '').localeCompare(a.dt || '') || a.location.localeCompare(b.location))
+                .slice(0, limit);
+
+            let minD = null;
+            let maxD = null;
+            const counts = { low: 0, medium: 0, high: 0, other: 0 };
+            rows.forEach((r) => {
+                const d = r.date || '';
+                if (d) {
+                    if (!minD || d < minD) minD = d;
+                    if (!maxD || d > maxD) maxD = d;
                 }
+                const lvl = normalizeWasteLevel(r.raw);
+                if (!lvl) counts.other += 1;
+                else if (lvl.key === 'low') counts.low += 1;
+                else if (lvl.key === 'medium') counts.medium += 1;
+                else if (lvl.key === 'high') counts.high += 1;
+                else counts.other += 1;
             });
 
-            // Re-center map to the bounds of all markers
-            if (markers.length > 0) {
-                const bounds = new google.maps.LatLngBounds();
-                markers.forEach(marker => bounds.extend(marker.getPosition()));
-                map.fitBounds(bounds);
-            } else {
-                map.setCenter(defaultCenter);
-                map.setZoom(15);
-            }
-            try {
-                const prev = garbageData;
-                garbageData = currentItems;
-                renderHighestAnalysis();
-                garbageData = prev;
-            } catch (e) {
-                renderHighestAnalysis();
-            }
+            summary.textContent = `Showing ${rows.length} record(s). Range: ${RECORDS_START_DATE} to ${RECORDS_END_DATE}. Counts: Low ${counts.low}, Medium ${counts.medium}, High ${counts.high}.`;
+
+            body.innerHTML = rows.map((r) => {
+                const lvl = normalizeLevelLabel(r.raw);
+                const rawPct = rawToPercent(r.raw);
+                return `
+                    <tr class="hover:bg-white/60">
+                        <td class="px-4 py-3 font-semibold text-gray-900">${r.date || '—'}</td>
+                        <td class="px-4 py-3 font-semibold text-gray-900">${r.time || '—'}</td>
+                        <td class="px-4 py-3 font-semibold text-gray-900">${r.location}</td>
+                        <td class="px-4 py-3 font-extrabold text-gray-900">${Number.isFinite(rawPct) ? rawPct : 0}%</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center gap-2 font-extrabold">
+                                <span class="w-3 h-3 rounded-md" style="background:${lvl.color};"></span>
+                                <span>${lvl.text}</span>
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join('') || `
+                <tr>
+                    <td class="px-4 py-6 text-gray-700 font-semibold" colspan="5">No records found for the 6 locations.</td>
+                </tr>
+            `;
         }
+
+        function initDashboard() {
+            db.collection("garbagelevel").onSnapshot((snapshot) => {
+                processGarbageSnapshot(snapshot);
+            }, () => {});
+        }
+
+        initDashboard();
 
 
         // --- Notification Dropdown Logic (Unchanged) ---
@@ -526,10 +439,6 @@
                 }
             }
         }
-    </script>
-    
-    <script async defer loading="async"
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAmLanEMQoY6NSEcacziav2xYyr4y8UOHU&callback=initMap&libraries=geometry">
     </script>
 </body>
 </html>
