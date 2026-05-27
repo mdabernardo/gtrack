@@ -64,12 +64,6 @@
                 <div class="details">
                     <div class="details-grid">
                         <div class="panel">
-                            <div class="panel-title">Collection Window</div>
-                            <div class="time-text" id="predWindowText">Select a date.</div>
-                            <div class="muted" id="predMetaText"></div>
-                            <ul class="eta-list" id="etaList" style="margin-top: 15px;"></ul>
-                        </div>
-                        <div class="panel">
                             <div class="panel-title">Resident Drop-off Schedule (6 Streets)</div>
                             <ul class="eta-list" id="dropoffList">
                                 <li class="eta-item"><span class="muted">Select a date.</span><span class="muted">—</span></li>
@@ -160,9 +154,6 @@
             var prevWeekBtn = document.getElementById('prevWeekBtn');
             var nextWeekBtn = document.getElementById('nextWeekBtn');
             var todayBtn = document.getElementById('todayBtn');
-            var predWindowText = document.getElementById('predWindowText');
-            var predMetaText = document.getElementById('predMetaText');
-            var etaList = document.getElementById('etaList');
             var dropoffList = document.getElementById('dropoffList');
             var dropoffByDate = {};
             var selectedIso = null;
@@ -182,9 +173,6 @@
             residentOrderedKeys.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
 
             function setDetailsEmpty() {
-                if (predWindowText) predWindowText.textContent = 'Select a date.';
-                if (predMetaText) predMetaText.textContent = '';
-                if (etaList) etaList.innerHTML = '';
                 if (dropoffList) dropoffList.innerHTML = '<li class="eta-item"><span class="muted">Select a date.</span><span class="muted">—</span></li>';
             }
 
@@ -314,15 +302,15 @@
                 return dt.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
             }
 
-            var PAST_DAYS = 365;
-            var FUTURE_DAYS = (function () {
-                var end = new Date(2027, 0, 31);
-                var now = new Date();
-                var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                var diff = Math.ceil((end.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-                return Math.max(0, diff);
-            })();
-            var weekStart = mondayOfWeek(new Date());
+            var WINDOW_END_ISO = '2026-05-31';
+            var thisWeekStart = mondayOfWeek(new Date());
+            var nextWeekStart = new Date(thisWeekStart.getFullYear(), thisWeekStart.getMonth(), thisWeekStart.getDate() + 7);
+            var WINDOW_START_ISO = fmtIso(thisWeekStart);
+            function isAllowedIso(iso) {
+                var d = safeStr(iso).slice(0, 10);
+                return !!d && d >= WINDOW_START_ISO && d <= WINDOW_END_ISO;
+            }
+            var weekStart = thisWeekStart;
 
             function showFor(isoDate) {
                 selectedIso = isoDate;
@@ -343,40 +331,6 @@
                 var dropItems = dropoffByDate[isoDate] || [];
                 var coll = collectorByDate[isoDate] || null;
 
-                if (predWindowText) {
-                    predWindowText.textContent = '06:00 AM - 10:00 PM';
-                }
-                if (predMetaText) {
-                    var rname = safeStr((doc && (doc.route_name || doc.routeName)) || 'Main Route');
-                    var conf = (doc && doc.confidence) ? ' • AI Confidence: ' + Math.round(Number(doc.confidence) * 100) + '%' : '';
-                    predMetaText.textContent = 'Route: ' + rname + conf;
-                }
-                if (etaList) {
-                    etaList.innerHTML = '';
-                    var etas = (doc && doc.etas && Array.isArray(doc.etas)) ? doc.etas : [];
-                    if (etas.length > 0) {
-                        etas.forEach(function(e) {
-                            var li = document.createElement('li');
-                            li.className = 'eta-item';
-                            var left = document.createElement('span');
-                            left.textContent = safeStr(e.location_name || e.locationName || 'Point');
-                            var right = document.createElement('span');
-                            right.className = 'eta-time';
-                            var times = (e && e.times && Array.isArray(e.times)) ? e.times : [];
-                            if (times.length) {
-                                right.textContent = 'ETA: ' + times.map(function (t) { return safeStr(t); }).filter(function (t) { return !!t; }).join(', ');
-                            } else {
-                                right.textContent = 'ETA: ' + safeStr(e.eta || '—');
-                            }
-                            li.appendChild(left);
-                            li.appendChild(right);
-                            etaList.appendChild(li);
-                        });
-                    } else {
-                        etaList.innerHTML = '<li class="eta-item"><span class="muted">No estimated times available.</span><span class="muted">—</span></li>';
-                    }
-                }
-
                 renderResidentList(dropItems);
             }
 
@@ -387,11 +341,26 @@
                 var isoDates = [];
                 for (var i = 0; i < 7; i++) {
                     var dt = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i);
-                    isoDates.push(fmtIso(dt));
+                    var iso = fmtIso(dt);
+                    if (isAllowedIso(iso)) isoDates.push(iso);
                 }
                 if (weekLabel) {
-                    var end = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
-                    weekLabel.textContent = fmtPretty(mon) + ' - ' + fmtPretty(end) + ' (' + fmtIso(mon) + ' to ' + fmtIso(end) + ')';
+                    var endDt = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+                    var endIso = fmtIso(endDt);
+                    if (endIso > WINDOW_END_ISO) endIso = WINDOW_END_ISO;
+                    weekLabel.textContent = fmtPretty(mon) + ' - ' + fmtPretty(new Date(endIso)) + ' (' + fmtIso(mon) + ' to ' + endIso + ')';
+                }
+                if (!isoDates.length) {
+                    setDetailsEmpty();
+                    var msg = document.createElement('div');
+                    msg.className = 'muted';
+                    msg.style.padding = '10px 0';
+                    msg.textContent = 'No schedules available in the selected window.';
+                    weekRow.appendChild(msg);
+                    if (prevWeekBtn) prevWeekBtn.disabled = true;
+                    if (nextWeekBtn) nextWeekBtn.disabled = true;
+                    if (todayBtn) todayBtn.disabled = false;
+                    return;
                 }
                 isoDates.forEach(function (iso, idx) {
                     var dt = new Date(iso);
@@ -421,34 +390,45 @@
                 } else {
                     showFor(selectedIso);
                 }
+
+                if (prevWeekBtn) prevWeekBtn.disabled = true;
+                if (nextWeekBtn) {
+                    var curIso = fmtIso(mon);
+                    var canGoNext = (curIso === WINDOW_START_ISO) && (fmtIso(nextWeekStart) <= WINDOW_END_ISO);
+                    nextWeekBtn.disabled = !canGoNext;
+                }
             }
 
             if (prevWeekBtn) {
                 prevWeekBtn.addEventListener('click', function () {
-                    weekStart.setDate(weekStart.getDate() - 7);
+                    weekStart = thisWeekStart;
                     renderWeek();
                 });
             }
             if (nextWeekBtn) {
                 nextWeekBtn.addEventListener('click', function () {
-                    weekStart.setDate(weekStart.getDate() + 7);
+                    var nextIso = fmtIso(nextWeekStart);
+                    if (nextIso > WINDOW_END_ISO) return;
+                    weekStart = nextWeekStart;
                     renderWeek();
                 });
             }
             if (todayBtn) {
                 todayBtn.addEventListener('click', function () {
-                    weekStart = mondayOfWeek(new Date());
-                    selectedIso = fmtIso(new Date());
+                    weekStart = thisWeekStart;
+                    var todayIso = fmtIso(new Date());
+                    selectedIso = isAllowedIso(todayIso) ? todayIso : WINDOW_START_ISO;
                     renderWeek();
                 });
             }
             renderWeek();
 
             db.collection('scheduling_assistance').onSnapshot(function (snap) {
+                scheduleMap = {};
                 snap.forEach(function (doc) {
                     var d = doc.data() || {};
                     var date = safeStr(d.date);
-                    if (!withinWindow(date, PAST_DAYS, FUTURE_DAYS)) return;
+                    if (!isAllowedIso(date)) return;
                     var rid = safeStr(d.route_id || d.routeId || '');
                     if (rid && date) {
                         scheduleMap[rid + '|' + date] = d;
@@ -462,7 +442,7 @@
                 snap.forEach(function (doc) {
                     var d = doc.data() || {};
                     var date = safeStr(d.date);
-                    if (!withinWindow(date, PAST_DAYS, FUTURE_DAYS)) return;
+                    if (!isAllowedIso(date)) return;
                     if (!dropoffByDate[date]) dropoffByDate[date] = [];
                     dropoffByDate[date].push({
                         name: d.name,
@@ -482,7 +462,7 @@
                     var d = doc.data() || {};
                     var date = safeStr(d.date);
                     if (!date) return;
-                    if (!withinWindow(date, PAST_DAYS, FUTURE_DAYS)) return;
+                    if (!isAllowedIso(date)) return;
                     var rid = safeStr(d.routeId || d.route_id || '');
                     if (residentRouteId && rid && rid !== residentRouteId) return;
                     collectorByDate[date] = d;

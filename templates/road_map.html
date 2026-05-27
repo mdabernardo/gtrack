@@ -70,9 +70,6 @@
             </div>
             <div class="actions">
                 <div class="workflow-controls">
-                    <select id="workflowRouteSelect">
-                        <option value="">Main Route</option>
-                    </select>
                     <select id="workflowLocationSelect">
                         <option value="">Select location…</option>
                     </select>
@@ -177,7 +174,6 @@
             var processStatus = document.getElementById('processStatus');
             var previewBtn = document.getElementById('previewBtn');
             var approveBtn = document.getElementById('approveBtn');
-            var workflowRouteSelect = document.getElementById('workflowRouteSelect');
             var workflowLocationSelect = document.getElementById('workflowLocationSelect');
             var workflowDate = document.getElementById('workflowDate');
             var workflowTruckFull = document.getElementById('workflowTruckFull');
@@ -192,7 +188,7 @@
             var reports = [];
             var selectedLocation = '';
             var selectedReport = { id: '', collection: '' };
-            var selectedRoute = { id: '', name: 'Main Route' };
+            var selectedRoute = { id: '', name: '' };
             var previewReady = false;
             var previewAbort = null;
             var previewSeq = 0;
@@ -558,25 +554,21 @@
             }
 
             function loadRoutesForWorkflow() {
-                if (!workflowRouteSelect) return;
                 fetch('/api/routes/')
                     .then(r => r.ok ? r.json() : Promise.reject(new Error('routes')))
                     .then(routes => {
                         routes = Array.isArray(routes) ? routes : [];
-                        workflowRouteSelect.innerHTML = '';
                         var main = null;
                         routes.forEach(function (rt) {
-                            var opt = document.createElement('option');
-                            opt.value = String(rt.id);
-                            opt.textContent = safeStr(rt.name || ('Route ' + rt.id));
-                            workflowRouteSelect.appendChild(opt);
-                            if (safeStr(rt.name).toLowerCase() === 'main route') main = rt;
+                            if (!main && safeStr(rt.name).toLowerCase() === 'main route') main = rt;
                         });
                         var pick = main || routes[0] || null;
                         if (pick) {
-                            workflowRouteSelect.value = String(pick.id);
-                            selectedRoute = { id: String(pick.id), name: safeStr(pick.name || 'Main Route') };
+                            selectedRoute = { id: String(pick.id), name: safeStr(pick.name || '') };
                             loadPointsForWorkflow();
+                        } else {
+                            selectedRoute = { id: '', name: '' };
+                            if (workflowLocationSelect) workflowLocationSelect.innerHTML = '<option value=\"\">Select location…</option>';
                         }
                     })
                     .catch(function () {});
@@ -603,15 +595,6 @@
                         }
                     })
                     .catch(function () {});
-            }
-
-            if (workflowRouteSelect) {
-                workflowRouteSelect.addEventListener('change', function () {
-                    selectedRoute = { id: safeStr(workflowRouteSelect.value), name: safeStr(workflowRouteSelect.options[workflowRouteSelect.selectedIndex].textContent || '') };
-                    previewReady = false;
-                    if (approveBtn) approveBtn.disabled = true;
-                    loadPointsForWorkflow();
-                });
             }
 
             if (workflowLocationSelect) {
