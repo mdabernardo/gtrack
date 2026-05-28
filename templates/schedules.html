@@ -171,6 +171,22 @@
                 if (p.point_id) pointIdToKey[String(p.point_id)] = key;
             });
             residentOrderedKeys.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+            if (!residentOrderedKeys.length) {
+                var fallbackNames = [
+                    'Sitio 6 Basketball Court',
+                    'Gulayan',
+                    'SM HOA',
+                    'Lucas Compound',
+                    'Justice',
+                    'Dumpsite'
+                ];
+                fallbackNames.forEach(function (nm, idx) {
+                    var key = canonKey(nm);
+                    if (!key) return;
+                    residentKeyToDisplay[key] = nm;
+                    residentOrderedKeys.push({ key: key, order: idx });
+                });
+            }
 
             function setDetailsEmpty() {
                 if (dropoffList) dropoffList.innerHTML = '<li class="eta-item"><span class="muted">Select a date.</span><span class="muted">—</span></li>';

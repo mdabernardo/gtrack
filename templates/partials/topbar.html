@@ -50,11 +50,10 @@
     </div>
 
     <div class="gt-dd">
-      <button type="button" class="gt-dd-btn {% if active_tab == 'track_trucks' or active_tab == 'collector_schedules' or active_tab == 'collector_route_suggestions' %}active{% endif %}" onclick="gtToggleMenu(event, 'gtCollectorMenu')">Collector ▾</button>
+      <button type="button" class="gt-dd-btn {% if active_tab == 'track_trucks' or active_tab == 'collector_schedules' %}active{% endif %}" onclick="gtToggleMenu(event, 'gtCollectorMenu')">Collector ▾</button>
       <div id="gtCollectorMenu" class="gt-dd-menu">
         <a href="{% url 'track_trucks' %}" class="{% if active_tab == 'track_trucks' %}active{% endif %}">Track Trucks</a>
         <a href="{% url 'collector_schedules' %}" class="{% if active_tab == 'collector_schedules' %}active{% endif %}">Collector Schedules</a>
-        <a href="{% url 'collector_route_suggestions' %}" class="{% if active_tab == 'collector_route_suggestions' %}active{% endif %}">Route Suggestions</a>
       </div>
     </div>
 
